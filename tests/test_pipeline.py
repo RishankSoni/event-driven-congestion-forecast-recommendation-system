@@ -71,3 +71,4 @@ def test_corridor_metadata_returns_zone(sample_df):
     assert zone == "Central Zone 2"
     assert police == "Cubbon Park"
     assert abs(lat - sample_df[sample_df["corridor"] == "CBD 2"]["latitude"].mean()) < 0.001
+    assert abs(lng - sample_df[sample_df["corridor"] == "CBD 2"]["longitude"].mean()) < 0.001
