@@ -1,6 +1,6 @@
 # tests/test_map_builder.py
 import pytest
-import folium
+import folium  # type: ignore[import]
 from src.map_builder import build_map
 
 

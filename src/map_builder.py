@@ -1,5 +1,5 @@
 # src/map_builder.py
-import folium
+import folium  # type: ignore[import]
 import pandas as pd
 
 _SEVERITY_COLOR  = {"LOW": "green", "MEDIUM": "orange", "HIGH": "red"}
