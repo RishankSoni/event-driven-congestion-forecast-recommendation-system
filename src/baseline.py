@@ -1,6 +1,6 @@
 # src/baseline.py
 import pandas as pd
-import numpy as np
+import numpy as np  # noqa: F401 — kept for future tasks
 
 PRE_WINDOW_H  = 1.0
 POST_WINDOW_H = 2.0
@@ -16,7 +16,7 @@ def compute_window_counts(df: pd.DataFrame, pre_h=PRE_WINDOW_H, post_h=POST_WIND
     post = pd.Timedelta(hours=post_h)
     result = pd.Series(0, index=df.index, name="window_count", dtype=int)
 
-    for corridor, grp in df.groupby("corridor"):
+    for _, grp in df.groupby("corridor"):
         times = grp["start_datetime"]
         for idx in grp.index:
             t    = times[idx]
@@ -32,14 +32,15 @@ def compute_corridor_baselines(train_df: pd.DataFrame, min_obs: int = MIN_OBS) -
     Falls back to zone-level baseline when corridor observations < min_obs.
     Falls back to global mean when zone baseline is also unavailable.
     """
-    global_mean = train_df["window_count"].mean()
+    global_mean: float = train_df["window_count"].mean()  # type: ignore[assignment]
 
-    # Zone-level baselines
-    zone_bl = {}
-    for (zone, hb, dow), grp in train_df.groupby(["zone", "hour_band", "day_of_week"]):
-        zone_bl[(zone, hb, dow)] = grp["window_count"].mean()
+    # Zone-level baselines — {(zone, hour_band, day_of_week): mean_window_count}
+    # Wrapping in pd.Series ensures .to_dict() is visible to type checkers
+    zone_bl: dict = pd.Series(
+        train_df.groupby(["zone", "hour_band", "day_of_week"])["window_count"].mean()
+    ).to_dict()
 
-    baselines = {}
+    baselines: dict = {}
     for corridor in train_df["corridor"].unique():
         corr_rows = train_df[train_df["corridor"] == corridor]
         zone = corr_rows["zone"].mode().iloc[0] if not corr_rows.empty else "unknown"
@@ -50,7 +51,7 @@ def compute_corridor_baselines(train_df: pd.DataFrame, min_obs: int = MIN_OBS) -
                     (corr_rows["hour_band"] == hb) & (corr_rows["day_of_week"] == dow)
                 ]
                 if len(grp) >= min_obs:
-                    baselines[(corridor, hb, dow)] = grp["window_count"].mean()
+                    baselines[(corridor, hb, dow)] = float(grp["window_count"].mean())  # type: ignore[arg-type]
                 else:
                     baselines[(corridor, hb, dow)] = zone_bl.get(
                         (zone, hb, dow), global_mean
@@ -61,20 +62,22 @@ def compute_corridor_baselines(train_df: pd.DataFrame, min_obs: int = MIN_OBS) -
 
 def compute_excess_scores(df: pd.DataFrame, baselines: dict) -> pd.Series:
     """impact_score = window_count - baseline for each event."""
-    global_mean = df["window_count"].mean()
+    global_mean: float = df["window_count"].mean()  # type: ignore[assignment]
     scores = df.apply(
         lambda row: row["window_count"] - baselines.get(
             (row["corridor"], row["hour_band"], row["day_of_week"]), global_mean
         ),
         axis=1,
     )
-    return scores.rename("impact_score")
+    scores.name = "impact_score"
+    return scores  # type: ignore[return-value]
 
 
 def compute_tertile_thresholds(train_df: pd.DataFrame) -> tuple:
     """Returns (low_thresh, high_thresh) from training impact_score distribution."""
-    low  = float(train_df["impact_score"].quantile(1 / 3))
-    high = float(train_df["impact_score"].quantile(2 / 3))
+    q = train_df["impact_score"].quantile([1 / 3, 2 / 3])
+    low  = float(q.iloc[0])
+    high = float(q.iloc[1])
     return low, high
 
 
@@ -86,4 +89,6 @@ def label_severity(df: pd.DataFrame, low_thresh: float, high_thresh: float) -> p
         if score <= high_thresh:
             return "MEDIUM"
         return "HIGH"
-    return df["impact_score"].apply(_classify).rename("severity")
+    result = df["impact_score"].apply(_classify)
+    result.name = "severity"
+    return result  # type: ignore[return-value]
