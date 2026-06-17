@@ -84,41 +84,38 @@ def build_diversion_graph(
     min_cooccurrences: int = 5,
 ) -> dict:
     """
-    For each primary corridor C, find corridors D that see elevated incident
-    counts in [t, t+1h] when C has an event — ranked by co_elevation ratio.
-    co_elevation(C,D) = mean co-incidents on D / D's own mean window_count.
+    Build a co-disruption graph keyed by (corridor, hour_band).
+    Returns dict[(str, str), list[str]] — top-2 diversion corridors per key.
     """
     post = pd.Timedelta(hours=1)
-    corridors = train_val_df["corridor"].dropna().unique()
 
-    # Per-corridor mean window_count (denominator for normalization)
     d_means: dict = {}
     for corr_key, grp in train_val_df.groupby("corridor"):
-        d_means[corr_key] = float(grp["window_count"].mean())  # type: ignore[arg-type]
+        d_means[corr_key] = float(grp["window_count"].mean())
 
-    global_mean: float = train_val_df["window_count"].mean()  # type: ignore[assignment]
+    global_mean: float = float(train_val_df["window_count"].mean())
     if not global_mean:
         global_mean = 1.0
 
-    # Accumulate co-incident counts: raw[C][D] = [count, count, ...]
-    raw: dict = {c: {} for c in corridors}
+    raw: dict = {}  # (C, hour_band) -> {D: [count, ...]}
 
     for idx, row in train_val_df.iterrows():
-        C = row["corridor"]
-        t = row["start_datetime"]
+        C  = row["corridor"]
+        t  = row["start_datetime"]
+        hb = row["hour_band"]
+        key = (C, hb)
 
         co = train_val_df[
-            (train_val_df.index != idx) &
-            (train_val_df["corridor"] != C) &
-            (train_val_df["start_datetime"] >= t) &
-            (train_val_df["start_datetime"] <= t + post)
+            (train_val_df.index != idx)
+            & (train_val_df["corridor"] != C)
+            & (train_val_df["start_datetime"] >= t)
+            & (train_val_df["start_datetime"] <= t + post)
         ]
         for D, grp in co.groupby("corridor"):
-            raw[C].setdefault(D, []).append(len(grp))
+            raw.setdefault(key, {}).setdefault(D, []).append(len(grp))
 
-    # Convert to elevation scores and keep top-2 per corridor
     result = {}
-    for C, neighbors in raw.items():
+    for key, neighbors in raw.items():
         elevations = {}
         for D, counts in neighbors.items():
             if len(counts) < min_cooccurrences:
@@ -127,11 +124,21 @@ def build_diversion_graph(
             d_baseline = float(d_means.get(D, global_mean)) or global_mean
             elevations[D] = mean_count / d_baseline
         top2 = sorted(elevations, key=lambda k: elevations[k], reverse=True)[:2]
-        result[C] = top2
+        if top2:
+            result[key] = top2
 
     return result
 
 
-def get_diversions(diversion_graph: dict, corridor: str) -> list:
-    """Return recommended diversion corridors for a given primary corridor."""
-    return diversion_graph.get(corridor, [])
+def get_diversions(diversion_graph: dict, corridor: str, hour_band: str) -> list:
+    """Return recommended diversion corridors for a given corridor and time band."""
+    # 1. Exact time-band match
+    exact = diversion_graph.get((corridor, hour_band))
+    if exact is not None:
+        return exact
+    # 2. Any band for this corridor
+    for key, divs in diversion_graph.items():
+        if key[0] == corridor:
+            return divs
+    # 3. No data
+    return []
