@@ -65,6 +65,10 @@ def test_end_to_end_cbd2_scenario(trained_state):
         "hour_of_day":           18,
         "day_of_week":           0,
         "requires_road_closure": False,
+        "priority":              "High",
+        "junction":              "unknown",
+        "month":                 2,
+        "is_weekend":            0,
     }
 
     severity, confidence = predict(pipeline, features)
