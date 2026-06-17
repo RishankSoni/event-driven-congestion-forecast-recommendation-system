@@ -2,10 +2,8 @@
 import pandas as pd
 import optuna
 from sklearn.model_selection import StratifiedKFold, cross_val_score
-from lightgbm import LGBMClassifier
-from sklearn.pipeline import Pipeline
 
-from src.model import _X, CorridorStatsTransformer, TARGET_COL
+from src.model import _X, CorridorStatsTransformer, TARGET_COL, _build_pipeline
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -31,10 +29,7 @@ def tune_lgbm(train_df: pd.DataFrame, n_trials: int = 75) -> dict:
             "n_jobs": -1,
             "verbose": -1,
         }
-        pipeline = Pipeline([
-            ("corridor_stats", CorridorStatsTransformer()),
-            ("lgbm", LGBMClassifier(**params)),
-        ])
+        pipeline = _build_pipeline(params)
         scores = cross_val_score(pipeline, X, y, cv=cv, scoring="f1_macro")
         return float(scores.mean())
 
