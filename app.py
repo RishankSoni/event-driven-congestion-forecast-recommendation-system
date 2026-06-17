@@ -33,7 +33,17 @@ def load_and_train():
     for split in [train_df, val_df, test_df]:
         split["severity"] = label_severity(split, low_t, high_t)
 
-    pipeline = train_model(train_df)
+    best_params = {
+        "n_estimators":      224,
+        "num_leaves":        200,
+        "learning_rate":     0.2985879580529471,
+        "min_child_samples": 5,
+        "reg_alpha":         3.016516532940732e-08,
+        "reg_lambda":        5.151065907260535e-08,
+        "subsample":         0.6962164633886399,
+        "colsample_bytree":  0.7913373860606256,
+    }
+    pipeline = train_model(train_df, params=best_params)
     cv_f1    = evaluate_cv(train_df)
     test_f1  = evaluate_test(pipeline, test_df)
 
