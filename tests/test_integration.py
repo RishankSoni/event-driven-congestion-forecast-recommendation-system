@@ -80,7 +80,7 @@ def test_end_to_end_cbd2_scenario(trained_state):
     officers   = officer_count(severity, n_adjacent_junctions=n_adj)
     assert officers["total_min"] >= 2
 
-    diversions = get_diversions(diversion_graph, corridor)
+    diversions = get_diversions(diversion_graph, corridor, features["hour_band"])
 
     fmap = build_map(lat, lng, severity, barricades, diversions, officers, train_df, "CBD 2 Rally")
     assert isinstance(fmap, folium.Map)

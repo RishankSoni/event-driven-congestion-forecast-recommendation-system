@@ -91,6 +91,10 @@ def test_build_diversion_graph_returns_dict(sample_df):
     big["impact_score"] = compute_excess_scores(big, baselines)
     graph = build_diversion_graph(big, min_cooccurrences=1)
     assert isinstance(graph, dict)
+    # Keys must be (corridor, hour_band) tuples
+    for key in graph:
+        assert isinstance(key, tuple)
+        assert len(key) == 2
 
 
 def test_get_diversions_returns_list(sample_df):
@@ -100,6 +104,6 @@ def test_get_diversions_returns_list(sample_df):
     baselines = compute_corridor_baselines(big, min_obs=1)
     big["impact_score"] = compute_excess_scores(big, baselines)
     graph = build_diversion_graph(big, min_cooccurrences=1)
-    divs = get_diversions(graph, "CBD 2")
+    divs = get_diversions(graph, "CBD 2", "morning")  # hour_band required
     assert isinstance(divs, list)
     assert len(divs) <= 2
