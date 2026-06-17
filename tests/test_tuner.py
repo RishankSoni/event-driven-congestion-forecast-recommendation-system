@@ -8,5 +8,8 @@ def test_tune_lgbm_returns_param_dict(sample_df):
     labeled = _prepare(sample_df)
     params = tune_lgbm(labeled, n_trials=2)
     assert isinstance(params, dict)
-    for key in ["n_estimators", "num_leaves", "learning_rate", "min_child_samples"]:
+    for key in [
+        "n_estimators", "num_leaves", "learning_rate", "min_child_samples",
+        "reg_alpha", "reg_lambda", "subsample", "colsample_bytree",
+    ]:
         assert key in params
