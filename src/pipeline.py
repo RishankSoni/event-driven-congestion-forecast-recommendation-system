@@ -20,6 +20,8 @@ def load_raw(path=DATA_PATH) -> pd.DataFrame:
     df["hour_of_day"] = df["start_datetime"].dt.hour.astype(int)
     df["day_of_week"] = df["start_datetime"].dt.dayofweek.astype(int)
     df["hour_band"]   = df["hour_of_day"].apply(_hour_to_band)
+    df["month"]      = df["start_datetime"].dt.month.astype(int)
+    df["is_weekend"] = (df["day_of_week"] >= 5).astype(int)
     df["requires_road_closure"] = (
         df["requires_road_closure"]
         .astype(str).str.strip().str.upper()
@@ -28,7 +30,7 @@ def load_raw(path=DATA_PATH) -> pd.DataFrame:
         .astype(bool)
         .astype(object)
     )
-    for col in ["event_cause", "event_type", "corridor", "zone", "police_station", "junction"]:
+    for col in ["event_cause", "event_type", "corridor", "zone", "police_station", "junction", "priority"]:
         if col in df.columns:
             df[col] = df[col].fillna("unknown")
     return df.reset_index(drop=True)
