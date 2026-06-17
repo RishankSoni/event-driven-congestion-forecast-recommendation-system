@@ -29,6 +29,7 @@ _LGBM_DEFAULTS: dict = {
     "random_state": 42,
     "n_jobs": -1,
     "verbose": -1,
+    "categorical_feature": "auto",
 }
 
 
@@ -37,6 +38,10 @@ class CorridorStatsTransformer(BaseEstimator, TransformerMixin):
     Also converts CAT_COLS to pandas category dtype for LightGBM native categorical support."""
 
     def fit(self, X: pd.DataFrame, y=None) -> "CorridorStatsTransformer":
+        if y is None:
+            raise ValueError(
+                "CorridorStatsTransformer requires y (target labels) to compute corridor statistics."
+            )
         df = X.copy()
         df["_y"] = y
         stats = df.groupby("corridor").agg(
@@ -83,9 +88,9 @@ def train_model(train_df: pd.DataFrame, params: Optional[dict] = None) -> Pipeli
     return pipeline
 
 
-def evaluate_cv(train_df: pd.DataFrame, n_splits: int = 5) -> float:
+def evaluate_cv(train_df: pd.DataFrame, n_splits: int = 5, params: Optional[dict] = None) -> float:
     """Mean macro-F1 from stratified k-fold CV on the training set."""
-    pipeline = _build_pipeline()
+    pipeline = _build_pipeline(params)
     cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     scores = cross_val_score(
         pipeline, _X(train_df), train_df[TARGET_COL],
@@ -107,15 +112,9 @@ def predict(pipeline: Pipeline, features: dict) -> tuple:
     police_station, hour_band, priority, junction, hour_of_day,
     day_of_week, requires_road_closure, month, is_weekend.
     """
-    row = pd.DataFrame([features])
-    row["requires_road_closure"] = row["requires_road_closure"].astype(int)
-    row["is_weekend"] = row["is_weekend"].astype(int)
-    row["month"] = row["month"].astype(int)
-    for col in CAT_COLS:
-        col_s: pd.Series = row[col]  # type: ignore[assignment]
-        row[col] = col_s.fillna("unknown").astype(str)
-    severity = str(pipeline.predict(row[ALL_FEATURE_COLS])[0])
-    proba = pipeline.predict_proba(row[ALL_FEATURE_COLS])[0]
+    row = _X(pd.DataFrame([features]))
+    severity = str(pipeline.predict(row)[0])
+    proba = pipeline.predict_proba(row)[0]
     confidence = {str(c): float(p) for c, p in zip(pipeline.classes_, proba)}
     return severity, confidence
 

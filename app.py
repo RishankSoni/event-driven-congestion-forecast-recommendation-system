@@ -44,7 +44,7 @@ def load_and_train():
         "colsample_bytree":  0.7913373860606256,
     }
     pipeline = train_model(train_df, params=best_params)
-    cv_f1    = evaluate_cv(train_df)
+    cv_f1    = evaluate_cv(train_df, params=best_params)
     test_f1  = evaluate_test(pipeline, test_df)
 
     diversion_graph = build_diversion_graph(
