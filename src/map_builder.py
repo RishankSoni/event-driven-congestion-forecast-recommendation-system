@@ -22,6 +22,22 @@ def _corridor_centroid(df: pd.DataFrame, corridor: str):
     return (float(sub["latitude"].mean()), float(sub["longitude"].mean()))  # type: ignore[arg-type]
 
 
+def _corridor_path(df: pd.DataFrame, corridor: str) -> list:
+    """Return deduplicated lat/lng waypoints along the corridor, sorted by principal axis."""
+    sub = df[df["corridor"] == corridor].dropna(subset=["latitude", "longitude"])
+    if sub.empty:
+        return []
+    # Bin to ~100 m grid to remove duplicate hotspot clusters
+    binned = sub.copy()
+    binned["_lat"] = (binned["latitude"] * 1000).round() / 1000
+    binned["_lng"] = (binned["longitude"] * 1000).round() / 1000
+    dedup = binned.drop_duplicates(subset=["_lat", "_lng"])
+    # Sort along whichever axis has more spread so the polyline follows the road
+    sort_col = "_longitude" if (dedup["_lng"].max() - dedup["_lng"].min()) >= (dedup["_lat"].max() - dedup["_lat"].min()) else "_lat"
+    dedup = dedup.sort_values("_lng" if sort_col == "_longitude" else "_lat")
+    return [[float(r["_lat"]), float(r["_lng"])] for _, r in dedup.iterrows()]
+
+
 def build_map(
     event_lat: float,
     event_lng: float,
@@ -36,6 +52,7 @@ def build_map(
     radius = _SEVERITY_RADIUS[severity]
 
     m = folium.Map(location=[event_lat, event_lng], zoom_start=14)
+    all_coords = [[event_lat, event_lng]]  # collected for fit_bounds
 
     # Impact zone
     folium.Circle(
@@ -64,17 +81,34 @@ def build_map(
                 popup=f"Barricade: {junction}",
                 icon=folium.Icon(color="red", icon="remove-sign"),
             ).add_to(m)
+            all_coords.append(list(coords))
 
-    # Diversion routes (event epicenter to corridor centroid, dashed)
+    # Diversion routes — actual corridor path from historical event locations
     for corridor in diversion_corridors:
-        coords = _corridor_centroid(train_df, corridor)
-        if coords:
-            folium.PolyLine(
-                locations=[[event_lat, event_lng], list(coords)],
-                color="blue",
-                weight=3,
-                dash_array="10",
-                popup=f"Divert via {corridor}",
+        path = _corridor_path(train_df, corridor)
+        if not path:
+            continue
+        folium.PolyLine(
+            locations=path,
+            color="blue",
+            weight=5,
+            opacity=0.8,
+            tooltip=f"Diversion → {corridor}",
+            popup=f"Divert via: {corridor}",
+        ).add_to(m)
+        # Label marker at corridor centroid
+        centroid = _corridor_centroid(train_df, corridor)
+        if centroid:
+            folium.Marker(
+                location=list(centroid),
+                tooltip=f"Diversion → {corridor}",
+                popup=f"Diversion route: {corridor}",
+                icon=folium.Icon(color="blue", icon="share-alt"),
             ).add_to(m)
+            all_coords.extend(path)
+
+    # Fit map to include all markers and corridor paths
+    if len(all_coords) > 1:
+        m.fit_bounds(all_coords)
 
     return m
