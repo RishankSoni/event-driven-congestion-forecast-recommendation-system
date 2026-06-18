@@ -13,6 +13,8 @@ from src.model import train_model, evaluate_cv, evaluate_test, predict, get_knn_
 from src.recommender import officer_count, barricade_positions, build_diversion_graph, get_diversions
 from src.map_builder import build_map
 from src.duration_model import train_duration_model, predict_duration
+from pathlib import Path
+from src.road_network import load_graph
 
 st.set_page_config(page_title="Event Congestion Planner", layout="wide")
 
@@ -24,6 +26,7 @@ def load_and_train():
     df["window_count"] = compute_window_counts(df)
 
     train_df, val_df, test_df = split_data(df)
+    graph = load_graph(Path("data/bengaluru_drive.graphml"))
 
     baselines = compute_corridor_baselines(train_df)
 
@@ -64,6 +67,7 @@ def load_and_train():
         "test_f1":         test_f1,
         "diversion_graph": diversion_graph,
         "dur_model":       dur_model,
+        "graph":           graph,
     }
 
 # ── App state ────────────────────────────────────────────────────────────────
@@ -75,6 +79,7 @@ diversion_graph = state["diversion_graph"]
 cv_f1           = state["cv_f1"]
 test_f1         = state["test_f1"]
 dur_model       = state["dur_model"]
+graph           = state["graph"]
 
 st.sidebar.markdown("### Model Performance")
 st.sidebar.metric("CV macro-F1 (train)", f"{cv_f1:.3f}")
@@ -145,7 +150,7 @@ if not st.session_state.show_results:
         officers             = officer_count(severity, n_adjacent_junctions=n_adj)
         diversions           = get_diversions(diversion_graph, corridor, hb)
         duration             = predict_duration(dur_model, features)
-        fmap                 = build_map(lat, lng, severity, barricades, diversions, officers, train_df, event_name)
+        fmap                 = build_map(lat, lng, severity, barricades, diversions, officers, train_df, event_name, graph)
 
         st.session_state.result_data = {
             "event_name": event_name,
