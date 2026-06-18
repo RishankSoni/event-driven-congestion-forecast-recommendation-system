@@ -12,10 +12,7 @@ from src.baseline import (
 from src.model import train_model, evaluate_cv, evaluate_test, predict, get_knn_neighbors
 from src.recommender import officer_count, barricade_positions, build_diversion_graph, get_diversions
 from src.map_builder import build_map
-from src.duration_model import (
-    duration_tertile_thresholds, compute_duration_labels,
-    train_duration_model, predict_duration,
-)
+from src.duration_model import train_duration_model, predict_duration
 
 st.set_page_config(page_title="Event Congestion Planner", layout="wide")
 
@@ -55,8 +52,6 @@ def load_and_train():
         pd.concat([train_df, val_df], ignore_index=True)
     )
 
-    low_d, high_d = duration_tertile_thresholds(train_df)
-    train_df["duration_label"] = compute_duration_labels(train_df, low_d, high_d)
     dur_model = train_duration_model(train_df)
 
     return {
