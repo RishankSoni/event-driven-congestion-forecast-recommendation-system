@@ -118,3 +118,22 @@ def test_load_raw_duration_h_nan_when_no_closed_datetime():
     missing_close = df[df["closed_datetime"].isna()]
     if not missing_close.empty:
         assert missing_close["duration_h"].isna().all()
+
+
+def test_load_raw_has_calendar_columns(tmp_path):
+    """load_raw() must add is_holiday and holiday_risk_tier."""
+    from src.pipeline import load_raw
+    import os
+    df = load_raw()   # uses the real data/events.csv
+    assert "is_holiday" in df.columns,       "is_holiday column missing"
+    assert "holiday_risk_tier" in df.columns, "holiday_risk_tier column missing"
+    assert df["is_holiday"].isin([0, 1]).all()
+    assert df["holiday_risk_tier"].between(0, 3).all()
+
+
+def test_load_raw_has_form_default_columns():
+    from src.pipeline import load_raw
+    df = load_raw()
+    for col in ["estimated_attendance", "has_vip", "is_route_event"]:
+        assert col in df.columns, f"{col} missing"
+        assert (df[col] == 0).all(), f"{col} should be all-zero defaults"
