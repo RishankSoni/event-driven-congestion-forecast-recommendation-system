@@ -1,4 +1,5 @@
 # src/explainer.py
+import warnings
 import numpy as np
 import pandas as pd
 import shap
@@ -78,6 +79,10 @@ def explain_severity(
         class_idx = classes.index(predicted_class)
     else:
         # Fallback: use index 0 (only class available in small training sets)
+        warnings.warn(
+            f"predicted_class '{predicted_class}' not in model classes {list(lgbm_step.classes_)}; "
+            f"falling back to class index 0 for SHAP explanation"
+        )
         class_idx = 0
 
     # shap_values may be:
@@ -99,11 +104,10 @@ def explain_risk(
 ) -> list[dict]:
     """Return top-5 SHAP drivers for a binary risk model (positive class)."""
     from src.risk_model import safe_df, _RISK_FEATURES
-    from src.model import CAT_COLS, NUM_COLS
     row = safe_df(pd.DataFrame([features]))
     X_pre = risk_pipeline.named_steps["pre"].transform(row[_RISK_FEATURES])
-    # ColumnTransformer orders: CAT_COLS first, then NUM_COLS
-    feature_names = CAT_COLS + NUM_COLS
+    # Feature order matches _RISK_FEATURES definition in risk_model
+    feature_names = _RISK_FEATURES
 
     shap_vals = explainer.shap_values(X_pre)
     # Binary LightGBM: list of two arrays (one per class) or single 2-D array
