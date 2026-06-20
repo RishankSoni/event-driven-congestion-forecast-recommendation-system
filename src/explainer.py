@@ -42,6 +42,27 @@ def build_explainers(severity_pipeline: Pipeline, risk_models: dict) -> dict:
     }
 
 
+def _extract_class_shap(shap_vals, class_idx: int, n_features: int) -> np.ndarray:
+    """Return a 1-D array of SHAP values for one class, handling all SHAP return formats."""
+    arr = np.asarray(shap_vals)
+    # object array or list: each element is (n_samples, n_features) for one class
+    if arr.dtype == object or isinstance(shap_vals, list):
+        per_class = list(shap_vals)
+        idx = class_idx if class_idx < len(per_class) else 0
+        return np.asarray(per_class[idx]).ravel()[:n_features]
+    # (n_samples, n_features, n_classes)
+    if arr.ndim == 3:
+        return arr[0, :, class_idx]
+    # (n_samples, n_features) — binary / single class
+    if arr.ndim == 2 and arr.shape[-1] == n_features:
+        return arr[0]
+    # (n_features, n_classes) — squeezed multiclass single sample
+    if arr.ndim == 2 and arr.shape[0] == n_features:
+        return arr[:, class_idx]
+    # fallback: flatten whatever we have to n_features
+    return arr.ravel()[:n_features]
+
+
 def _top5_drivers(sv: np.ndarray, feature_names: list) -> list[dict]:
     total = float(np.sum(np.abs(sv))) or 1.0
     drivers = [
@@ -85,16 +106,8 @@ def explain_severity(
         )
         class_idx = 0
 
-    # shap_values may be:
-    #   - list of 2-D arrays (one per class): old SHAP API
-    #   - 3-D ndarray (n_samples, n_features, n_classes): new SHAP API
-    #   - 2-D ndarray (n_samples, n_features): binary/single-class
-    if isinstance(shap_vals, list):
-        sv = shap_vals[class_idx][0]
-    elif shap_vals.ndim == 3:
-        sv = shap_vals[0, :, class_idx]
-    else:
-        sv = shap_vals[0]
+    # Normalise: newer SHAP returns numpy object array instead of list
+    sv = _extract_class_shap(shap_vals, class_idx, len(feature_names))
 
     return _top5_drivers(sv, feature_names)
 
@@ -112,12 +125,6 @@ def explain_risk(
     feature_names = _RISK_FEATURES
 
     shap_vals = explainer.shap_values(X_pre)
-    # Binary LightGBM: list of 2-D arrays (old API), 3-D array (new API), or 2-D array
-    if isinstance(shap_vals, list):
-        sv = shap_vals[1][0] if len(shap_vals) > 1 else shap_vals[0][0]
-    elif shap_vals.ndim == 3:
-        sv = shap_vals[0, :, 1]  # positive class
-    else:
-        sv = shap_vals[0]
+    sv = _extract_class_shap(shap_vals, 1, len(feature_names))
 
     return _top5_drivers(sv, feature_names)
