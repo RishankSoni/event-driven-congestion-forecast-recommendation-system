@@ -180,7 +180,7 @@ if submitted:
     diversions = get_diversions(diversion_graph, corridor, hb)
     fmap       = build_map(
         lat, lng, severity, barricades, diversions,
-        officers, train_df, event_name, graph
+        officers, train_df, event_name, graph, corridor=corridor
     )
 
     st.session_state["result_data"] = {

@@ -162,3 +162,6 @@ st.download_button(
     file_name=f"plan_{r['event_name'].replace(' ', '_')}.csv",
     mime="text/csv",
 )
+
+st.markdown("---")
+st.page_link("pages/3_Post_Event_Report.py", label="File Post-Event Report")
