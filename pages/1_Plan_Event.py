@@ -1,7 +1,6 @@
 # pages/1_Plan_Event.py
 import datetime
 
-import pandas as pd
 import streamlit as st
 
 from src.app_cache import get_road_graph, load_and_train
