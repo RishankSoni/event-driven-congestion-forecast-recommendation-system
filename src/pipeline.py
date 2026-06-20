@@ -1,9 +1,41 @@
 # src/pipeline.py
+import re
 import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
 DATA_PATH = Path(__file__).parent.parent / "data" / "events.csv"
+
+_HIGH_CAUSE = {"accident", "water_logging", "procession", "vip_movement", "protest"}
+
+_NLP_PATTERNS = {
+    "desc_traffic_slow": r"\b(?:slow|jam|standstill|heavy.?traffic|congestion|choked|crawling|gridlock)\b",
+    "desc_breakdown":    r"\b(?:breakdown|break.?down|puncture|tyre|tire|wheel|stall(?:ed)?|broke(?:n)?)\b",
+    "desc_waterlogging": r"\b(?:waterlog(?:ging)?|water.?log|flood(?:ing)?|rain.?water|inundat)\b",
+    "desc_accident":     r"\b(?:accident|collision|crash|hit|pile.?up|mishap|bang)\b",
+    "desc_construction": r"\b(?:construction|repair|work(?:ing)?|digging|pipe|maintenance|laying)\b",
+    "desc_road_block":   r"\b(?:block(?:age)?|barricad|clos(?:ed|ure)|diverted?|diversion)\b",
+}
+
+
+def _add_nlp_features(df: pd.DataFrame) -> pd.DataFrame:
+    desc = (
+        df["description"].fillna("").str.lower()
+        if "description" in df.columns
+        else pd.Series("", index=df.index, dtype=str)
+    )
+    for col, pattern in _NLP_PATTERNS.items():
+        df[col] = desc.str.contains(pattern, regex=True, na=False).astype(int)
+    df["desc_word_count"] = desc.str.split().apply(len)
+
+    rc = df["requires_road_closure"].astype(bool) if "requires_road_closure" in df.columns else pd.Series(False, index=df.index)
+    has_cong = (df["desc_traffic_slow"].astype(bool) | df["desc_accident"].astype(bool))
+    has_problem = desc.str.contains(r"\bproblem\b|\bheavy\b|\bblock\b", regex=True, na=False)
+    df["new_severity_high"] = (
+        df["event_cause"].isin(_HIGH_CAUSE) | (rc & (has_cong | has_problem))
+    ).astype(int)
+    return df
+
 
 def _hour_to_band(hour: int) -> str:
     if hour < 6:   return "night"
@@ -39,6 +71,38 @@ def load_raw(path=DATA_PATH) -> pd.DataFrame:
     for col in ["event_cause", "event_type", "corridor", "zone", "police_station", "junction", "priority"]:
         if col in df.columns:
             df[col] = df[col].fillna("unknown")
+
+    # authenticated — "yes"/"no"/True/False → int
+    if "authenticated" in df.columns:
+        df["authenticated"] = (
+            df["authenticated"].astype(str).str.lower()
+            .isin(["yes", "true", "1", "t"])
+            .astype(int)
+        )
+    else:
+        df["authenticated"] = 0
+
+    # veh_type — categorical, ~60% fill
+    if "veh_type" in df.columns:
+        df["veh_type"] = df["veh_type"].fillna("unknown").astype(str)
+    else:
+        df["veh_type"] = "unknown"
+
+    # NLP features from description
+    df = _add_nlp_features(df)
+
+    # Calendar features — derived from event date
+    from src.calendar_intel import get_holiday_info
+    _dates = df["start_datetime"].dt.date
+    _holiday_info = _dates.map(get_holiday_info)
+    df["is_holiday"]        = _holiday_info.map(lambda x: int(x["is_holiday"]))
+    df["holiday_risk_tier"] = _holiday_info.map(lambda x: x["risk_tier"]).astype(int)
+
+    # Form-derived features — backfilled to 0 for all historical rows
+    df["estimated_attendance"] = 0
+    df["has_vip"]              = 0
+    df["is_route_event"]       = 0
+
     return df.reset_index(drop=True)
 
 def split_data(df: pd.DataFrame, train_frac=0.70, val_frac=0.15, random_state=42):

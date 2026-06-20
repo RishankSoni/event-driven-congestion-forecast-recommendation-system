@@ -9,9 +9,26 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OrdinalEncoder
 import lightgbm as lgb
 
-from src.model import CAT_COLS, NUM_COLS
+from src.model import CAT_COLS, NUM_COLS, _NLP_NUM_COLS, _NEW_INT_COLS
 
-_DURATION_FEATURES = CAT_COLS + NUM_COLS  # 13 features, same as severity model
+_DURATION_FEATURES = CAT_COLS + NUM_COLS
+
+
+def _safe_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Inject EDA-derived columns with safe defaults when they are absent (e.g. in tests)."""
+    df = df.copy()
+    for col in _NLP_NUM_COLS:
+        if col not in df.columns:
+            df[col] = 0
+    for col in _NEW_INT_COLS:
+        if col not in df.columns:
+            df[col] = 0
+    if "veh_type" not in df.columns:
+        df["veh_type"] = "unknown"
+    for col in CAT_COLS:
+        if col not in df.columns:
+            df[col] = "unknown"
+    return df
 
 
 def _to_float(X):
@@ -66,6 +83,7 @@ def train_duration_model(train_df: pd.DataFrame) -> dict:
         df     = train_df.assign(duration_h=_dur)
     else:
         df = train_df.copy()
+    df     = _safe_df(df)
     valid  = df.dropna(subset=["duration_h"]).copy()
     low_thresh, high_thresh = duration_tertile_thresholds(valid)
     valid["_dur_label"] = compute_duration_labels(valid, low_thresh, high_thresh)
@@ -147,7 +165,7 @@ def predict_duration(dur_model: dict, features: dict) -> str:
     if dur_model["kind"] == "baseline":
         return dur_model["pipeline"]  # already the most-frequent label string
 
-    X = pd.DataFrame([features])[_DURATION_FEATURES]
+    X = _safe_df(pd.DataFrame([features]))[_DURATION_FEATURES]
     pipeline = dur_model["pipeline"]
 
     if dur_model["kind"] == "classifier":
