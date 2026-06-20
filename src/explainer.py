@@ -86,12 +86,14 @@ def explain_severity(
         class_idx = 0
 
     # shap_values may be:
-    #   - list of 2-D arrays (one per class, multiclass)
-    #   - single 2-D ndarray (binary or single-class)
+    #   - list of 2-D arrays (one per class): old SHAP API
+    #   - 3-D ndarray (n_samples, n_features, n_classes): new SHAP API
+    #   - 2-D ndarray (n_samples, n_features): binary/single-class
     if isinstance(shap_vals, list):
         sv = shap_vals[class_idx][0]
+    elif shap_vals.ndim == 3:
+        sv = shap_vals[0, :, class_idx]
     else:
-        # Single class or binary: ndarray shape (n_samples, n_features)
         sv = shap_vals[0]
 
     return _top5_drivers(sv, feature_names)
@@ -110,10 +112,11 @@ def explain_risk(
     feature_names = _RISK_FEATURES
 
     shap_vals = explainer.shap_values(X_pre)
-    # Binary LightGBM: list of two arrays (one per class) or single 2-D array
+    # Binary LightGBM: list of 2-D arrays (old API), 3-D array (new API), or 2-D array
     if isinstance(shap_vals, list):
-        # Take positive class (index 1); if only one array, use index 0
         sv = shap_vals[1][0] if len(shap_vals) > 1 else shap_vals[0][0]
+    elif shap_vals.ndim == 3:
+        sv = shap_vals[0, :, 1]  # positive class
     else:
         sv = shap_vals[0]
 
