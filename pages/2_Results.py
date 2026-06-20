@@ -1,4 +1,5 @@
 # pages/2_Results.py
+import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
 
@@ -137,7 +138,6 @@ with right:
 
 # ── Export ────────────────────────────────────────────────────────────────────
 st.markdown("---")
-import pandas as pd
 export_rows = [
     ("Event",                r["event_name"]),
     ("Corridor",             r["corridor"]),

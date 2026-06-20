@@ -122,7 +122,7 @@ def _build_lookup() -> dict[datetime.date, tuple]:
     # Variable/lunar dates first
     for d, info in _VARIABLE_DATES.items():
         lookup[d] = info
-    # Fixed annual dates: only overwrite if equal or lower tier already present
+    # Fixed annual dates: only overwrite if fixed holiday tier is equal or higher than existing variable entry
     for year in range(2022, 2028):
         for (month, day), info in _FIXED_ANNUAL.items():
             try:
