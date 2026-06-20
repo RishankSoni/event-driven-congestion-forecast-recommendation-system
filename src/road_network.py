@@ -52,6 +52,94 @@ def route_coords(G: nx.MultiDiGraph, orig_node: int, dest_node: int) -> list:
     return [(float(G.nodes[n]["y"]), float(G.nodes[n]["x"])) for n in node_ids]
 
 
+def _path_length(G: nx.MultiDiGraph, nodes: list) -> float:
+    """Sum of minimum-length edge weights along a node sequence."""
+    return sum(
+        min(G[u][v][k].get("length", 1) for k in G[u][v])
+        for u, v in zip(nodes[:-1], nodes[1:])
+    )
+
+
+def compute_diversions(
+    G: nx.MultiDiGraph,
+    df: pd.DataFrame,
+    corridor: str,
+    n_routes: int = 2,
+    max_ratio: float = 1.8,
+) -> list:
+    """Return up to n_routes road-following diversion paths around a blocked corridor.
+
+    Algorithm: iterative edge-penalty Dijkstra (Yen-style).
+      1. Find the primary Dijkstra path (shortest route) between the corridor's
+         geographic endpoints to establish the baseline length.
+      2. Inflate all primary-path edges to weight 1e9 in-place, re-run Dijkstra
+         to force a genuinely different road-following alternative.
+      3. Restore original weights, record the alternative if its true length
+         is within max_ratio of the primary.
+      4. Repeat, accumulating blocked edges, to find a second route.
+
+    Thread-safety note: edge weights are temporarily modified on the shared cached
+    graph and immediately restored. Safe for single-user deployments.
+    """
+    try:
+        primary_coords = corridor_route_coords(G, df, corridor)
+    except (ValueError, nx.NetworkXNoPath, nx.NodeNotFound, Exception):
+        return []
+
+    if len(primary_coords) < 2:
+        return []
+
+    start_node = nearest_node(G, primary_coords[0][0], primary_coords[0][1])
+    end_node   = nearest_node(G, primary_coords[-1][0], primary_coords[-1][1])
+    if start_node == end_node:
+        return []
+
+    try:
+        primary_nodes = nx.dijkstra_path(G, start_node, end_node, weight="length")
+    except (nx.NetworkXNoPath, nx.NodeNotFound):
+        return []
+
+    primary_len = _path_length(G, primary_nodes)
+    if not primary_len:
+        return []
+
+    # Cumulative set of (u, v) edge pairs to avoid across iterations
+    all_blocked: set = set(zip(primary_nodes[:-1], primary_nodes[1:]))
+    routes: list = []
+
+    for _ in range(n_routes):
+        # Inflate blocked edges in-place; save originals for restore
+        saved: dict = {}
+        for u, v in all_blocked:
+            if not G.has_edge(u, v):
+                continue
+            for key in list(G[u][v].keys()):
+                saved[(u, v, key)] = G[u][v][key].get("length", 1)
+                G[u][v][key]["length"] = 1e9
+
+        try:
+            alt_nodes = nx.dijkstra_path(G, start_node, end_node, weight="length")
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            for (u, v, key), orig in saved.items():
+                G[u][v][key]["length"] = orig
+            break
+
+        # Restore before measuring so _path_length uses real weights
+        for (u, v, key), orig in saved.items():
+            G[u][v][key]["length"] = orig
+
+        alt_len = _path_length(G, alt_nodes)
+        if alt_len > primary_len * max_ratio:
+            break
+
+        routes.append([
+            (float(G.nodes[n]["y"]), float(G.nodes[n]["x"])) for n in alt_nodes
+        ])
+        all_blocked.update(zip(alt_nodes[:-1], alt_nodes[1:]))
+
+    return routes
+
+
 def corridor_route_coords(G: nx.MultiDiGraph, df: pd.DataFrame, corridor: str) -> list:
     """Return road-following waypoints along the full length of a named corridor.
 

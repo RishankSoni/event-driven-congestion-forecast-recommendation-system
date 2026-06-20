@@ -51,6 +51,9 @@ def _snap_to_intersection(G: nx.MultiDiGraph, lat: float, lng: float) -> tuple:
     return (float(G.nodes[node_id]["y"]), float(G.nodes[node_id]["x"]))
 
 
+_DIVERSION_COLORS = ["blue", "cadetblue"]
+
+
 def build_map(
     event_lat: float,
     event_lng: float,
@@ -61,6 +64,7 @@ def build_map(
     train_df: pd.DataFrame,
     event_name: str,
     G: nx.MultiDiGraph,
+    corridor: str = "",
 ) -> folium.Map:
     color  = _SEVERITY_COLOR[severity]
     radius = _SEVERITY_RADIUS[severity]
@@ -101,26 +105,39 @@ def build_map(
         ).add_to(m)
         all_coords.append(list(coords))
 
-    # Diversion routes — road-following polylines via Dijkstra on OSM graph
-    for corridor in diversion_corridors:
-        path = road_network.corridor_route_coords(G, train_df, corridor)
-        folium.PolyLine(
-            locations=path,
-            color="blue",
-            weight=5,
-            opacity=0.8,
-            tooltip=f"Diversion → {corridor}",
-            popup=f"Divert via: {corridor}",
-        ).add_to(m)
-        centroid = _corridor_centroid(train_df, corridor)
-        if centroid:
-            folium.Marker(
-                location=list(centroid),
-                tooltip=f"Diversion → {corridor}",
-                popup=f"Diversion route: {corridor}",
-                icon=folium.Icon(color="blue", icon="share-alt"),
+    # Diversion routes — road-following alternatives computed by iterative Dijkstra
+    if corridor:
+        diversion_paths = road_network.compute_diversions(G, train_df, corridor)
+        for i, path in enumerate(diversion_paths):
+            col = _DIVERSION_COLORS[i % len(_DIVERSION_COLORS)]
+            label = f"Diversion Route {i + 1}"
+            folium.PolyLine(
+                locations=path,
+                color=col,
+                weight=5,
+                opacity=0.85,
+                tooltip=label,
+                popup=f"{label} — road-following alternative around {corridor}",
             ).add_to(m)
+            if path:
+                folium.Marker(
+                    location=list(path[len(path) // 2]),
+                    tooltip=label,
+                    icon=folium.Icon(color=col, icon="share-alt"),
+                ).add_to(m)
             all_coords.extend(path)
+    else:
+        # Fallback for legacy callers without corridor arg
+        for div_corridor in diversion_corridors:
+            try:
+                path = road_network.corridor_route_coords(G, train_df, div_corridor)
+                folium.PolyLine(
+                    locations=path, color="blue", weight=5, opacity=0.8,
+                    tooltip=f"Diversion → {div_corridor}",
+                ).add_to(m)
+                all_coords.extend(path)
+            except Exception:
+                pass
 
     if len(all_coords) > 1:
         m.fit_bounds(all_coords)
