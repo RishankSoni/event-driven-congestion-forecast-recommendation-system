@@ -351,7 +351,7 @@ _RANK_WEIGHTS = {
 _WORKLOAD_SQL = """
     SELECT COUNT(*) FROM planned_events
     WHERE police_station = :station
-      AND status IN ('planned', 'active')
+      AND status NOT IN ('cancelled', 'completed')
       AND ABS(
             julianday(:date || 'T' || :time)
             - julianday(event_date || 'T' || event_time)
