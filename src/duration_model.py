@@ -88,9 +88,16 @@ def train_duration_model(train_df: pd.DataFrame) -> dict:
         df = train_df.copy()
     df     = _safe_df(df)
     valid  = df.dropna(subset=["duration_h"]).copy()
+
+    if len(valid) < 5:
+        return {"pipeline": "MEDIUM", "kind": "baseline", "low_thresh": 1.0, "high_thresh": 3.0}
+
     low_thresh, high_thresh = duration_tertile_thresholds(valid)
     valid["_dur_label"] = compute_duration_labels(valid, low_thresh, high_thresh)
     valid = valid.dropna(subset=["_dur_label"])
+
+    if len(valid) < 5:
+        return {"pipeline": "MEDIUM", "kind": "baseline", "low_thresh": low_thresh, "high_thresh": high_thresh}
 
     X        = valid[_DURATION_FEATURES]
     y_label  = valid["_dur_label"]
