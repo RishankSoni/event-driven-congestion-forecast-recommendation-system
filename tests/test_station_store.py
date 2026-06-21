@@ -222,3 +222,166 @@ def test_btp_no_match_leaves_zero(_patch_db):
         ).fetchone()
     assert row[0] == 0
     assert row[1] is None
+
+
+# ── Ranking + allocation tests ────────────────────────────────────────────────
+
+@pytest.fixture
+def db_with_events(_patch_db):
+    """DB with both police_stations and planned_events tables."""
+    from src import event_store
+    event_store.init_db()
+    station_store.init_station_db()
+    return _patch_db
+
+
+def _insert_geocoded_station(conn, code, name, lat, lng, dcp="Central", has_btp=0, btp_conf=None):
+    from src.station_store import _now
+    conn.execute(
+        """INSERT OR REPLACE INTO police_stations
+           (station_code, station_name, address_clean, unit, dcp_zone, acp_zone,
+            latitude, longitude, location_source, has_btp_pi, btp_match_confidence,
+            capacity_officers, capacity_vehicles, capacity_source, phone,
+            geocoded_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (code, name, f"addr {code}", None, dcp, "Cubbon",
+         lat, lng, "geocoded", has_btp, btp_conf, 25, 3, "default", None,
+         _now(), _now()),
+    )
+
+
+def test_rank_stations_distance_ordering(db_with_events):
+    # Event at (12.97, 77.59); insert stations at 3km and 6km
+    with sqlite3.connect(db_with_events) as conn:
+        conn.execute("DELETE FROM police_stations")
+        # ~3km north: 3/111 ≈ 0.027 degrees
+        _insert_geocoded_station(conn, 1, "Near Station",  12.97 + 0.027, 77.59)
+        # ~6km north
+        _insert_geocoded_station(conn, 2, "Far Station",   12.97 + 0.054, 77.59)
+        conn.commit()
+
+    results = station_store.rank_stations(12.97, 77.59, "2026-07-15", "10:00", top_n=2)
+    assert len(results) == 2
+    assert results[0]["station_name"] == "Near Station"
+    assert results[1]["station_name"] == "Far Station"
+
+
+def test_rank_stations_btp_boost(db_with_events):
+    # Station A: 3km, no BTP → score ≈ 3.0
+    # Station B: 4.5km, has BTP → score ≈ 4.5 - 2.0 = 2.5 → B should rank first
+    with sqlite3.connect(db_with_events) as conn:
+        conn.execute("DELETE FROM police_stations")
+        _insert_geocoded_station(conn, 1, "Station A No BTP", 12.97 + 0.027, 77.59, has_btp=0)
+        _insert_geocoded_station(conn, 2, "Station B BTP",    12.97 + 0.040, 77.59, has_btp=1, btp_conf=1.0)
+        conn.commit()
+
+    results = station_store.rank_stations(12.97, 77.59, "2026-07-15", "10:00", top_n=2)
+    assert results[0]["station_name"] == "Station B BTP"
+
+
+def test_rank_stations_workload_penalty(db_with_events):
+    # Station A: 3km, workload=0 → score ≈ 3.0
+    # Station B: 1km, workload=2 → score ≈ 1.0 + 2*1.5 = 4.0 → A should rank first
+    from src import event_store
+    with sqlite3.connect(db_with_events) as conn:
+        conn.execute("DELETE FROM police_stations")
+        _insert_geocoded_station(conn, 1, "Station A",  12.97 + 0.027, 77.59)
+        _insert_geocoded_station(conn, 2, "Station B",  12.97 + 0.009, 77.59)
+        conn.commit()
+
+    # Add 2 active events assigned to Station B on same day/time
+    for i in range(2):
+        event_store.save_event({
+            "event_name":    f"Existing Event {i}",
+            "event_type":    "planned",
+            "event_cause":   "procession",
+            "corridor":      "MG Road",
+            "zone":          "Central",
+            "police_station": "Station B",
+            "event_date":    "2026-07-15",
+            "event_time":    "10:00",
+        })
+
+    results = station_store.rank_stations(12.97, 77.59, "2026-07-15", "10:00", top_n=2)
+    assert results[0]["station_name"] == "Station A"
+
+
+def test_rank_stations_returns_empty_if_few_geocoded(db_with_events):
+    with sqlite3.connect(db_with_events) as conn:
+        conn.execute("DELETE FROM police_stations")
+        _insert_geocoded_station(conn, 1, "Only Station", 12.97, 77.59)
+        conn.commit()
+
+    results = station_store.rank_stations(12.97, 77.59, "2026-07-15", "10:00")
+    assert results == []
+
+
+def test_allocate_officers_sums_to_total(db_with_events):
+    stations = [
+        {"station_name": "A", "distance_km": 2.0, "capacity_officers": 25,
+         "capacity_source": "default", "officers_allocated": 0,
+         "allocation_capped": False, "capacity_unconfirmed": False},
+        {"station_name": "B", "distance_km": 4.0, "capacity_officers": 25,
+         "capacity_source": "default", "officers_allocated": 0,
+         "allocation_capped": False, "capacity_unconfirmed": False},
+    ]
+    result = station_store.allocate_officers(stations, 12)
+    total_allocated = sum(s["officers_allocated"] for s in result)
+    assert abs(total_allocated - 12) <= 1  # rounding tolerance of ±1
+
+
+def test_allocate_cap_applied_only_for_manual(db_with_events):
+    stations = [
+        {"station_name": "Default", "distance_km": 1.0, "capacity_officers": 5,
+         "capacity_source": "default", "officers_allocated": 0,
+         "allocation_capped": False, "capacity_unconfirmed": False},
+        {"station_name": "Manual",  "distance_km": 1.0, "capacity_officers": 5,
+         "capacity_source": "manual",  "officers_allocated": 0,
+         "allocation_capped": False, "capacity_unconfirmed": False},
+    ]
+    result = station_store.allocate_officers(stations, 20)
+    default_s = next(s for s in result if s["station_name"] == "Default")
+    manual_s  = next(s for s in result if s["station_name"] == "Manual")
+    # Manual station: capped at 5
+    assert manual_s["officers_allocated"] <= 5
+    assert manual_s["allocation_capped"] is True
+    assert manual_s["capacity_unconfirmed"] is False
+    # Default station: NOT capped (raw ≈ 10, exceeds cap of 5 but cap not applied)
+    assert default_s["officers_allocated"] > 5
+    assert default_s["capacity_unconfirmed"] is True
+
+
+def test_allocate_both_branches_set_all_keys(db_with_events):
+    stations = [
+        {"station_name": "D", "distance_km": 2.0, "capacity_officers": 25,
+         "capacity_source": "default", "officers_allocated": 0,
+         "allocation_capped": False, "capacity_unconfirmed": False},
+        {"station_name": "M", "distance_km": 2.0, "capacity_officers": 25,
+         "capacity_source": "manual",  "officers_allocated": 0,
+         "allocation_capped": False, "capacity_unconfirmed": False},
+    ]
+    result = station_store.allocate_officers(stations, 10)
+    for s in result:
+        assert "officers_allocated"   in s
+        assert "allocation_capped"    in s
+        assert "capacity_unconfirmed" in s
+
+
+def test_capacity_update_sets_source_manual(db_with_events):
+    station_store.init_station_db()
+    with sqlite3.connect(db_with_events) as conn:
+        code = conn.execute(
+            "SELECT station_code FROM police_stations LIMIT 1"
+        ).fetchone()[0]
+
+    station_store.update_station_capacity(code, officers=30, vehicles=5)
+
+    with sqlite3.connect(db_with_events) as conn:
+        row = conn.execute(
+            "SELECT capacity_officers, capacity_vehicles, capacity_source "
+            "FROM police_stations WHERE station_code=?",
+            (code,),
+        ).fetchone()
+    assert row[0] == 30
+    assert row[1] == 5
+    assert row[2] == "manual"
