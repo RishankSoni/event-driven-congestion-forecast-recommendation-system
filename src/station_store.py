@@ -127,3 +127,214 @@ def _seed_from_csv() -> None:
             rows,
         )
         conn.commit()
+
+
+import difflib
+import logging
+import math
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi, dlam = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def geocode_all_stations(
+    progress_callback=None,
+    _geocoder=None,
+) -> dict:
+    """
+    Geocode all pending stations via Nominatim, then apply zone centroid fallback,
+    then enrich BTP flags. Returns summary dict.
+    _geocoder: callable(query) -> location|None — injectable for testing.
+    """
+    if _geocoder is None:
+        from geopy.geocoders import Nominatim
+        from geopy.extra.rate_limiter import RateLimiter
+        nom = Nominatim(user_agent="gridlock2-geocoder")
+        _geocoder = RateLimiter(nom.geocode, min_delay_seconds=1)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        pending = conn.execute(
+            "SELECT station_code, station_name, address_clean FROM police_stations "
+            "WHERE location_source = 'pending'"
+        ).fetchall()
+
+    total = len(pending)
+    geocoded_count = 0
+
+    for i, row in enumerate(pending):
+        query = f"{row['address_clean']}, Bangalore, India"
+        loc = _geocoder(query)
+        now = _now()
+        if loc is not None:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.execute(
+                    "UPDATE police_stations SET latitude=?, longitude=?, "
+                    "location_source='geocoded', geocoded_at=?, updated_at=? "
+                    "WHERE station_code=?",
+                    (loc.latitude, loc.longitude, now, now, row["station_code"]),
+                )
+                conn.commit()
+            geocoded_count += 1
+        if progress_callback:
+            progress_callback(i + 1, total)
+
+    _apply_zone_centroid_fallback()
+    _compute_and_store_zone_centroids()
+    _enrich_btp()
+
+    return get_geocode_summary()
+
+
+def _apply_zone_centroid_fallback() -> None:
+    """Set zone centroid lat/lng for stations that failed geocoding."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        geocoded = conn.execute(
+            "SELECT dcp_zone, latitude, longitude FROM police_stations "
+            "WHERE location_source = 'geocoded'"
+        ).fetchall()
+
+    # Build centroid map from geocoded-only rows
+    zone_lats: dict[str, list[float]] = {}
+    zone_lngs: dict[str, list[float]] = {}
+    for row in geocoded:
+        zone_lats.setdefault(row["dcp_zone"], []).append(row["latitude"])
+        zone_lngs.setdefault(row["dcp_zone"], []).append(row["longitude"])
+
+    centroids = {
+        z: (sum(zone_lats[z]) / len(zone_lats[z]),
+            sum(zone_lngs[z]) / len(zone_lngs[z]))
+        for z in zone_lats
+    }
+
+    now = _now()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        pending = conn.execute(
+            "SELECT station_code, dcp_zone FROM police_stations "
+            "WHERE location_source = 'pending'"
+        ).fetchall()
+        for row in pending:
+            c = centroids.get(row["dcp_zone"])
+            if c:
+                conn.execute(
+                    "UPDATE police_stations SET latitude=?, longitude=?, "
+                    "location_source='zone_centroid_fallback', updated_at=? "
+                    "WHERE station_code=?",
+                    (c[0], c[1], now, row["station_code"]),
+                )
+        conn.commit()
+
+
+def _compute_and_store_zone_centroids() -> None:
+    """Persist DCP zone centroids from geocoded-only stations to zone_centroids table."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT dcp_zone, latitude, longitude FROM police_stations "
+            "WHERE location_source = 'geocoded'"
+        ).fetchall()
+
+    zone_lats: dict[str, list[float]] = {}
+    zone_lngs: dict[str, list[float]] = {}
+    for row in rows:
+        zone_lats.setdefault(row["dcp_zone"], []).append(row["latitude"])
+        zone_lngs.setdefault(row["dcp_zone"], []).append(row["longitude"])
+
+    with sqlite3.connect(DB_PATH) as conn:
+        for zone, lats in zone_lats.items():
+            lat = sum(lats) / len(lats)
+            lng = sum(zone_lngs[zone]) / len(zone_lngs[zone])
+            conn.execute(
+                "INSERT OR REPLACE INTO zone_centroids (dcp_zone, latitude, longitude) "
+                "VALUES (?, ?, ?)",
+                (zone, lat, lng),
+            )
+        conn.commit()
+
+
+def _enrich_btp_from_df(btp_df: pd.DataFrame) -> None:
+    """Enrich police_stations with BTP PI flags from a loaded BTP DataFrame."""
+    pi_rows = btp_df[btp_df["Officer"].str.strip() == "Police Inspector Traffic"]
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        stations = conn.execute(
+            "SELECT station_code, station_name FROM police_stations"
+        ).fetchall()
+
+    now = _now()
+    with sqlite3.connect(DB_PATH) as conn:
+        for station in stations:
+            sname = station["station_name"].lower().strip()
+            best_score = 0.0
+            for _, brow in pi_rows.iterrows():
+                bname = str(brow["Traffic Police Station"]).lower().strip()
+                # Remove common suffixes for matching
+                bname_clean = re.sub(
+                    r"\b(police\s+station|ps|p\.s\.?)\b", "", bname
+                ).strip()
+                ratio = difflib.SequenceMatcher(None, sname, bname_clean).ratio()
+                if ratio > best_score:
+                    best_score = ratio
+
+            if best_score == 1.0:
+                conn.execute(
+                    "UPDATE police_stations SET has_btp_pi=1, btp_match_confidence=1.0, "
+                    "updated_at=? WHERE station_code=?",
+                    (now, station["station_code"]),
+                )
+            elif best_score >= 0.7:
+                conn.execute(
+                    "UPDATE police_stations SET has_btp_pi=1, btp_match_confidence=?, "
+                    "updated_at=? WHERE station_code=?",
+                    (round(best_score, 3), now, station["station_code"]),
+                )
+        conn.commit()
+
+
+def _enrich_btp() -> None:
+    """Download BTP CSV and enrich stations. Logs warning on download failure."""
+    try:
+        resp = requests.get(_BTP_CSV_URL, timeout=10)
+        resp.raise_for_status()
+        import io
+        btp_df = pd.read_csv(io.StringIO(resp.text))
+        _enrich_btp_from_df(btp_df)
+    except Exception as exc:
+        logger.warning("BTP data unavailable — traffic PI flags not set: %s", exc)
+
+
+def reset_station_geocode(station_code: int) -> None:
+    """Reset a station to pending so it can be re-geocoded."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE police_stations SET location_source='pending', latitude=NULL, "
+            "longitude=NULL, geocoded_at=NULL, updated_at=? WHERE station_code=?",
+            (_now(), station_code),
+        )
+        conn.commit()
+
+
+def get_geocode_summary() -> dict:
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT location_source, COUNT(*) FROM police_stations GROUP BY location_source"
+        ).fetchall()
+    counts = {r[0]: r[1] for r in rows}
+    return {
+        "geocoded": counts.get("geocoded", 0),
+        "fallback": counts.get("zone_centroid_fallback", 0),
+        "pending":  counts.get("pending", 0),
+        "total":    sum(counts.values()),
+    }
