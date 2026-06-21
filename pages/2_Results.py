@@ -38,17 +38,15 @@ if "result_data" not in st.session_state:
     st.page_link("pages/1_Plan_Event.py", label="← Back to form")
     st.stop()
 
-r             = st.session_state["result_data"]
-severity      = r["severity"]
-confidence    = r["confidence"]
-officers      = r["officers"]
-barricades    = r["barricades"]
-diversions    = r["diversions"]
-neighbors     = r["neighbors"]
-fmap          = r["fmap"]
-risks         = r["risks"]
-rain_mm       = r.get("rain_mm", 0.0)
-temperature_c = r.get("temperature_c", 25.0)
+r          = st.session_state["result_data"]
+severity   = r["severity"]
+confidence = r["confidence"]
+officers   = r["officers"]
+barricades = r["barricades"]
+diversions = r["diversions"]
+neighbors  = r["neighbors"]
+fmap       = r["fmap"]
+risks      = r["risks"]
 
 # ── Build deployment_data (consumed by page 7) ────────────────────────────────
 _ranked: list[dict] = []
@@ -132,13 +130,6 @@ with left:
     }
     _dur = r.get("duration", "N/A")
     st.markdown(f"**Duration Forecast:** {_DUR_LABELS.get(_dur, _dur)}")
-
-    # ── Weather Context ───────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### Weather at Event Location")
-    wc1, wc2 = st.columns(2)
-    wc1.metric("Rain", f"{rain_mm:.1f} mm")
-    wc2.metric("Temperature", f"{temperature_c:.1f} °C")
 
     # ── Risk Forecast ─────────────────────────────────────────────────────────
     st.markdown("---")

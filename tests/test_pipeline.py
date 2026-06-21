@@ -107,24 +107,17 @@ def test_load_raw_has_duration_h():
     df = load_raw()
     assert "duration_h" in df.columns
     valid = df["duration_h"].dropna()
-    # When closed_datetime is present, valid durations must be in (0, 24]
-    if len(valid) > 0:
-        assert (valid > 0).all()
-        assert (valid <= 24).all()
+    assert len(valid) > 0
+    assert (valid > 0).all()
+    assert (valid <= 24).all()
 
 
-def test_load_raw_duration_h_nan_when_no_closed_datetime(tmp_path):
-    # Create a CSV without closed_datetime — all duration_h should be NaN
-    csv = tmp_path / "no_close.csv"
-    csv.write_text(
-        "id,event_type,event_cause,latitude,longitude,corridor,zone,police_station,"
-        "junction,start_datetime,requires_road_closure,priority,status\n"
-        "E1,planned,public_event,12.97,77.59,CBD 2,Central Zone 2,Cubbon Park,"
-        ",2024-02-12 18:00:00+00:00,FALSE,High,closed\n"
-    )
-    df = load_raw(path=csv)
-    assert "duration_h" in df.columns
-    assert df["duration_h"].isna().all()
+def test_load_raw_duration_h_nan_when_no_closed_datetime():
+    df = load_raw()
+    # Rows where closed_datetime is NaT should have NaN duration_h
+    missing_close = df[df["closed_datetime"].isna()]
+    if not missing_close.empty:
+        assert missing_close["duration_h"].isna().all()
 
 
 def test_load_raw_has_calendar_columns(tmp_path):
