@@ -89,7 +89,7 @@ def test_geocode_skips_non_pending(_patch_db):
         return None
 
     station_store.geocode_all_stations(_geocoder=mock_geocoder)
-    assert len(calls) == 109  # 110 total minus 1 already geocoded
+    assert len(calls) == 109  # 110 seeded - 1 geocoded
 
 
 def test_zone_centroid_fallback_applied(_patch_db):

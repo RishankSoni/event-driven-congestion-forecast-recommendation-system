@@ -194,7 +194,7 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 def _build_zone_centroids() -> dict[str, tuple[float, float]]:
     """Read zone centroids from SQLite (populated by station_store geocoding pipeline).
-    Falls back to module-level _ZONE_CENTROIDS when table missing or empty (Phase 1 / pre-geocoding)."""
+    Returns empty dict if table missing or empty (Phase 1 / pre-geocoding)."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             rows = conn.execute(
@@ -204,11 +204,8 @@ def _build_zone_centroids() -> dict[str, tuple[float, float]]:
             return {r[0]: (r[1], r[2]) for r in rows}
     except Exception:
         pass
-    # Fall back to the module-level dict (may be monkeypatched in tests or pre-populated)
-    return globals().get("_ZONE_CENTROIDS", {})
-
-
-_ZONE_CENTROIDS: dict[str, tuple[float, float]] = _build_zone_centroids()
+    # Return empty dict when zone_centroids not available
+    return {}
 
 _TIME_OVERLAP_SQL = """
     AND ABS(

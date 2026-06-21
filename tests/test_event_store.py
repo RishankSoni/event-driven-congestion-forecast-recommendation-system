@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 from pathlib import Path
 from src import event_store
+from src import station_store
 
 
 @pytest.fixture(autouse=True)
@@ -10,6 +11,7 @@ def tmp_db(tmp_path, monkeypatch):
     """Redirect DB_PATH to a temp file for isolation."""
     db = tmp_path / "test_events.db"
     monkeypatch.setattr(event_store, "DB_PATH", db)
+    monkeypatch.setattr(station_store, "DB_PATH", db)
     return db
 
 
@@ -188,8 +190,12 @@ def test_conflict_branch1_excludes_cancelled(tmp_db):
 
 
 def test_conflict_branch2_zone_no_centroid_returns_qualifier(tmp_db, monkeypatch):
+    station_store.init_station_db()
     event_store.init_db()
-    monkeypatch.setattr(event_store, "_ZONE_CENTROIDS", {})
+    # Insert test zone centroid row
+    with sqlite3.connect(tmp_db) as conn:
+        # Do NOT insert any zone_centroid, leaving the table empty
+        pass
     event_store.save_event(_make_event(
         corridor=None,
         event_date="2026-07-01", event_time="14:30",
@@ -204,11 +210,15 @@ def test_conflict_branch2_zone_no_centroid_returns_qualifier(tmp_db, monkeypatch
 
 
 def test_conflict_branch2_distance_cap_filters_far_events(tmp_db, monkeypatch):
+    station_store.init_station_db()
     event_store.init_db()
-    monkeypatch.setattr(
-        event_store, "_ZONE_CENTROIDS",
-        {"Central Division, Bangalore City": (12.975, 77.607)},
-    )
+    # Insert test zone centroid row
+    with sqlite3.connect(tmp_db) as conn:
+        conn.execute(
+            "INSERT INTO zone_centroids (dcp_zone, latitude, longitude) VALUES (?, ?, ?)",
+            ("Central Division, Bangalore City", 12.975, 77.607),
+        )
+        conn.commit()
     event_store.save_event(_make_event(
         corridor=None,
         latitude=12.850, longitude=77.607,
