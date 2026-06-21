@@ -24,7 +24,12 @@ NUM_COLS = [
     "estimated_attendance",
     "has_vip",
     "is_route_event",
+    "rain_mm",
+    "temperature_c",
 ]
+
+_WEATHER_COLS = ["rain_mm", "temperature_c"]
+_WEATHER_DEFAULTS: dict = {"rain_mm": 0.0, "temperature_c": 25.0}
 ALL_FEATURE_COLS = CAT_COLS + NUM_COLS
 TARGET_COL = "severity"
 
@@ -116,6 +121,9 @@ def _X(df: pd.DataFrame) -> pd.DataFrame:
     for col in _NEW_INT_COLS:
         if col not in df.columns:
             df[col] = 0
+    for col in _WEATHER_COLS:
+        if col not in df.columns:
+            df[col] = _WEATHER_DEFAULTS[col]
     if "veh_type" not in df.columns:
         df["veh_type"] = "unknown"
 
@@ -125,6 +133,8 @@ def _X(df: pd.DataFrame) -> pd.DataFrame:
     out["month"] = out["month"].astype(int)
     for col in _NLP_NUM_COLS + _NEW_INT_COLS:
         out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).astype(int)
+    out["rain_mm"] = pd.to_numeric(out["rain_mm"], errors="coerce").fillna(0.0)
+    out["temperature_c"] = pd.to_numeric(out["temperature_c"], errors="coerce").fillna(25.0)
     for col in CAT_COLS:
         col_s: pd.Series = out[col]  # type: ignore[assignment]
         out[col] = col_s.fillna("unknown").astype(str)

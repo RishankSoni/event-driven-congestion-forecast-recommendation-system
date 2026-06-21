@@ -9,7 +9,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OrdinalEncoder
 import lightgbm as lgb
 
-from src.model import CAT_COLS, NUM_COLS, _NLP_NUM_COLS, _NEW_INT_COLS
+from src.model import CAT_COLS, NUM_COLS, _NLP_NUM_COLS, _NEW_INT_COLS, _WEATHER_COLS, _WEATHER_DEFAULTS
 
 _DURATION_FEATURES = CAT_COLS + NUM_COLS
 
@@ -23,6 +23,9 @@ def _safe_df(df: pd.DataFrame) -> pd.DataFrame:
     for col in _NEW_INT_COLS:
         if col not in df.columns:
             df[col] = 0
+    for col in _WEATHER_COLS:
+        if col not in df.columns:
+            df[col] = _WEATHER_DEFAULTS[col]
     if "veh_type" not in df.columns:
         df["veh_type"] = "unknown"
     for col in CAT_COLS:
