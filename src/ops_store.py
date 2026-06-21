@@ -150,7 +150,7 @@ def optimize_multi_event(event_ids: list[str]) -> dict:
         available = [s for s in all_ranked if s["station_code"] not in claimed]
         assigned = available[:3]
 
-        if not assigned and all_ranked:
+        if not assigned and (all_ranked or (lat is not None and lng is not None)):
             unresolvable = True
 
         if assigned:

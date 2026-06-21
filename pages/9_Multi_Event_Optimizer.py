@@ -28,10 +28,27 @@ if not date_events:
     st.stop()
 
 # ── Step 2: Event selector ────────────────────────────────────────────────────
-event_options = {e["event_name"]: e["event_id"] for e in date_events}
+# Deduplicate display labels for events sharing the same name
+_name_counts: dict[str, int] = {}
+for e in date_events:
+    _name_counts[e["event_name"]] = _name_counts.get(e["event_name"], 0) + 1
+
+_seen2: dict[str, int] = {}
+_labels: list[str] = []
+_label_to_id: dict[str, str] = {}
+for e in date_events:
+    name = e["event_name"]
+    if _name_counts[name] > 1:
+        _seen2[name] = _seen2.get(name, 0) + 1
+        label = f"{name} ({_seen2[name]})"
+    else:
+        label = name
+    _labels.append(label)
+    _label_to_id[label] = e["event_id"]
+
 selected_names = st.multiselect(
     f"Select 2–5 events for {selected_date.strftime('%d %B %Y')}",
-    options=list(event_options.keys()),
+    options=_labels,
     max_selections=5,
 )
 
@@ -39,7 +56,7 @@ if len(selected_names) < 2:
     st.info("Select at least 2 events to optimize resource allocation.")
     st.stop()
 
-selected_ids = [event_options[n] for n in selected_names]
+selected_ids = [_label_to_id[n] for n in selected_names]
 
 # ── Step 3: Optimize ──────────────────────────────────────────────────────────
 if st.button("Optimize Resource Allocation", type="primary"):
