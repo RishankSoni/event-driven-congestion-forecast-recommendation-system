@@ -1,9 +1,31 @@
 # pages/2_Results.py
+import json
+
 import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
 
+from src import event_store
 from src.app_cache import load_and_train
+
+
+def _build_save_record(sd: dict, r: dict) -> dict:
+    """Merge form inputs (sd) with prediction outputs (r) into a save_event-ready dict."""
+    risks    = r["risks"]
+    officers = r["officers"]
+    return {
+        **sd,
+        "severity":          r["severity"],
+        "severity_conf":     r["confidence"].get(r["severity"], 0.0),
+        "congestion_prob":   risks["congestion_prob"],
+        "law_order_prob":    risks["law_order_prob"],
+        "duration_label":    r.get("duration"),
+        "officer_min":       officers["total_min"],
+        "officer_max":       officers["total_max"],
+        "barricades_json":   json.dumps(r["barricades"]),
+        "diversions_json":   json.dumps(r["diversions"]),
+        "shap_drivers_json": json.dumps(r["shap_severity"]),
+    }
 
 st.set_page_config(page_title="Event Congestion Planner — Results", layout="wide")
 
@@ -165,3 +187,35 @@ st.download_button(
 
 st.markdown("---")
 st.page_link("pages/3_Post_Event_Report.py", label="File Post-Event Report")
+
+# ── Save to Event Calendar ────────────────────────────────────────────────────
+st.markdown("---")
+if "save_data" not in st.session_state:
+    st.info("Return to the form and resubmit to enable saving this event.")
+else:
+    sd = st.session_state["save_data"]
+    conflicts, note = event_store.check_conflicts(sd)
+
+    show_save = False
+    if conflicts:
+        warn_msg = f"⚠ {len(conflicts)} event(s) already planned on the same corridor within 4 hours."
+        if note:
+            warn_msg += f"  \n_{note}_"
+        st.warning(warn_msg)
+        c1, c2 = st.columns(2)
+        if c1.button("Save anyway"):
+            show_save = True
+        if c2.button("Review conflicts"):
+            st.switch_page("pages/5_Event_Repository.py")
+    else:
+        show_save = True
+
+    if show_save:
+        if "event_saved_id" not in st.session_state:
+            if st.button("💾 Save to Event Calendar"):
+                record = _build_save_record(sd, r)
+                eid = event_store.save_event(record)
+                st.session_state["event_saved_id"] = eid
+                st.success(f"Event saved — ID {eid[:8]}…")
+        else:
+            st.button("✓ Saved", disabled=True)
