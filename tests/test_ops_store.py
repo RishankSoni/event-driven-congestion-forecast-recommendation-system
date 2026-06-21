@@ -1,4 +1,5 @@
 # tests/test_ops_store.py
+import sqlite3
 from datetime import date, timedelta
 
 import pytest
