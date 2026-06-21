@@ -74,3 +74,219 @@ def init_db() -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(_DDL)
         conn.commit()
+
+
+# ── CRUD ──────────────────────────────────────────────────────────────────────
+
+def save_event(event_data: dict) -> str:
+    """Insert a new event. Returns UUID4 event_id. Raises ValueError on duplicate."""
+    event_id = str(uuid.uuid4())
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+
+    serialized = dict(event_data)
+    for field in ("barricades_json", "diversions_json", "feature_vector_json", "shap_drivers_json"):
+        if field in serialized and not isinstance(serialized[field], str):
+            serialized[field] = json.dumps(serialized[field])
+
+    row = {
+        **{col: None for col in _COLUMNS},
+        **serialized,
+        "event_id":   event_id,
+        "status":     serialized.get("status", "planned"),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    col_str      = ", ".join(_COLUMNS)
+    placeholders = ", ".join(f":{col}" for col in _COLUMNS)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        try:
+            conn.execute(
+                f"INSERT INTO planned_events ({col_str}) VALUES ({placeholders})",
+                {col: row.get(col) for col in _COLUMNS},
+            )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError(f"Duplicate event_id: {event_id}") from exc
+
+    return event_id
+
+
+def get_event(event_id: str) -> dict | None:
+    """Fetch a single event by ID. Returns None if not found."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM planned_events WHERE event_id = ?", (event_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+_VALID_STATUSES = frozenset({"planned", "active", "completed", "cancelled"})
+
+
+def list_events(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    corridor: str | None = None,
+    event_type: str | None = None,
+    severity: str | None = None,
+    status: str | None = None,
+) -> list[dict]:
+    """Return filtered events ordered by event_date ASC, event_time ASC."""
+    conditions: list[str] = []
+    params: dict = {}
+
+    if date_from:
+        conditions.append("event_date >= :date_from")
+        params["date_from"] = date_from
+    if date_to:
+        conditions.append("event_date <= :date_to")
+        params["date_to"] = date_to
+    if corridor:
+        conditions.append("corridor = :corridor")
+        params["corridor"] = corridor
+    if event_type:
+        conditions.append("event_type = :event_type")
+        params["event_type"] = event_type
+    if severity:
+        conditions.append("severity = :severity")
+        params["severity"] = severity
+    if status:
+        conditions.append("status = :status")
+        params["status"] = status
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            f"SELECT * FROM planned_events {where} "
+            "ORDER BY event_date ASC, event_time ASC",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_status(event_id: str, status: str) -> None:
+    """Update event status. Raises ValueError for unrecognised status values."""
+    if status not in _VALID_STATUSES:
+        raise ValueError(
+            f"Invalid status: {status!r}. Must be one of {sorted(_VALID_STATUSES)}"
+        )
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE planned_events SET status = ?, updated_at = ? WHERE event_id = ?",
+            (status, now, event_id),
+        )
+
+
+# ── Conflict detection ────────────────────────────────────────────────────────
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _build_zone_centroids() -> dict[str, tuple[float, float]]:
+    """Build zone centroid lookup from geocoded police stations only."""
+    csv_path = Path("bangalore_city_police_stations_2012.csv")
+    if not csv_path.exists():
+        return {}
+    try:
+        df = pd.read_csv(csv_path)
+        required = {"location_source", "latitude", "longitude", "DCP"}
+        if not required.issubset(df.columns):
+            return {}
+        geocoded = df[df["location_source"] == "geocoded"].dropna(
+            subset=["latitude", "longitude"]
+        )
+        if geocoded.empty:
+            return {}
+        return {
+            division: (grp["latitude"].mean(), grp["longitude"].mean())
+            for division, grp in geocoded.groupby("DCP")
+        }
+    except Exception:
+        logger.warning("Failed to build zone centroids from police station CSV")
+        return {}
+
+
+_ZONE_CENTROIDS: dict[str, tuple[float, float]] = _build_zone_centroids()
+
+_TIME_OVERLAP_SQL = """
+    AND ABS(
+        julianday(:event_date || 'T' || :event_time)
+        - julianday(event_date || 'T' || event_time)
+    ) * 24 <= 4
+    AND status NOT IN ('cancelled', 'completed')
+"""
+
+
+def check_conflicts(event_data: dict) -> tuple[list[dict], str]:
+    """
+    4-branch conflict detection.
+    Returns (conflicting_events, precision_note).
+    precision_note is empty string for full-precision results.
+    """
+    corridor = event_data.get("corridor")
+    zone     = event_data.get("zone")
+    lat      = event_data.get("latitude")
+    lng      = event_data.get("longitude")
+    base     = {"event_date": event_data["event_date"], "event_time": event_data["event_time"]}
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+
+        if corridor:
+            rows = conn.execute(
+                f"SELECT * FROM planned_events WHERE corridor = :corridor {_TIME_OVERLAP_SQL}",
+                {**base, "corridor": corridor},
+            ).fetchall()
+            return [dict(r) for r in rows], ""
+
+        if zone:
+            rows = [
+                dict(r) for r in conn.execute(
+                    f"SELECT * FROM planned_events WHERE zone = :zone {_TIME_OVERLAP_SQL}",
+                    {**base, "zone": zone},
+                ).fetchall()
+            ]
+            centroid = _ZONE_CENTROIDS.get(zone)
+            if centroid is None:
+                note = (
+                    f"Location precision unavailable for {zone} — "
+                    "conflict detection is time-window only"
+                )
+                return rows, note
+            ev_lat = lat if lat is not None else centroid[0]
+            ev_lng = lng if lng is not None else centroid[1]
+            filtered = [
+                r for r in rows
+                if _haversine_km(
+                    ev_lat, ev_lng,
+                    r["latitude"] if r["latitude"] is not None else centroid[0],
+                    r["longitude"] if r["longitude"] is not None else centroid[1],
+                ) <= 8.0
+            ]
+            return filtered, ""
+
+        if lat is not None and lng is not None:
+            rows = [
+                dict(r) for r in conn.execute(
+                    f"SELECT * FROM planned_events "
+                    f"WHERE latitude IS NOT NULL AND longitude IS NOT NULL {_TIME_OVERLAP_SQL}",
+                    base,
+                ).fetchall()
+            ]
+            return [
+                r for r in rows
+                if _haversine_km(lat, lng, r["latitude"], r["longitude"]) <= 3.0
+            ], ""
+
+        logger.warning("conflict check skipped — event has no location data")
+        return [], ""
