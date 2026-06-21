@@ -339,3 +339,125 @@ def get_geocode_summary() -> dict:
         "pending":  counts.get("pending", 0),
         "total":    sum(counts.values()),
     }
+
+
+# ── Ranking + Allocation ───────────────────────────────────────────────────────
+
+_RANK_WEIGHTS = {
+    "btp_boost":        2.0,
+    "workload_penalty": 1.5,
+}
+
+_WORKLOAD_SQL = """
+    SELECT COUNT(*) FROM planned_events
+    WHERE police_station = :station
+      AND status IN ('planned', 'active')
+      AND ABS(
+            julianday(:date || 'T' || :time)
+            - julianday(event_date || 'T' || event_time)
+          ) * 24 <= 4
+"""
+
+
+def rank_stations(
+    event_lat: float,
+    event_lng: float,
+    event_date: str,
+    event_time: str,
+    top_n: int = 5,
+) -> list[dict]:
+    """Rank geocoded stations by score = distance - btp_boost + workload_penalty.
+    Returns [] if fewer than 2 stations are geocoded."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM police_stations WHERE latitude IS NOT NULL"
+        ).fetchall()
+
+    if len(rows) < 2:
+        return []
+
+    scored: list[dict] = []
+    with sqlite3.connect(DB_PATH) as conn:
+        for row in rows:
+            dist = _haversine_km(event_lat, event_lng, row["latitude"], row["longitude"])
+            try:
+                workload = conn.execute(
+                    _WORKLOAD_SQL,
+                    {"station": row["station_name"], "date": event_date, "time": event_time},
+                ).fetchone()[0]
+            except sqlite3.OperationalError:
+                # planned_events table does not exist yet
+                workload = 0
+            score = (
+                dist
+                - row["has_btp_pi"] * _RANK_WEIGHTS["btp_boost"]
+                + workload * _RANK_WEIGHTS["workload_penalty"]
+            )
+            scored.append({
+                "station_name":         row["station_name"],
+                "station_code":         row["station_code"],
+                "dcp_zone":             row["dcp_zone"],
+                "acp_zone":             row["acp_zone"],
+                "distance_km":          round(dist, 2),
+                "workload":             workload,
+                "has_btp_pi":           row["has_btp_pi"],
+                "btp_match_confidence": row["btp_match_confidence"],
+                "capacity_officers":    row["capacity_officers"],
+                "capacity_vehicles":    row["capacity_vehicles"],
+                "capacity_source":      row["capacity_source"],
+                "score":                round(score, 3),
+                "response_min":         round(dist / 30.0 * 60),
+                "officers_allocated":   0,
+                "allocation_capped":    False,
+                "capacity_unconfirmed": False,
+            })
+
+    scored.sort(key=lambda x: x["score"])
+    return scored[:top_n]
+
+
+def allocate_officers(stations: list[dict], total_officers: int) -> list[dict]:
+    """Inverse-distance weighted officer allocation.
+    Cap only applied for capacity_source == 'manual'. Both branches set all 3 keys."""
+    if not stations:
+        return stations
+
+    dists   = [max(s["distance_km"], 0.1) for s in stations]
+    weights = [1.0 / d for d in dists]
+    total_w = sum(weights)
+
+    for s, w in zip(stations, weights):
+        raw = round(total_officers * w / total_w)
+        if s["capacity_source"] == "manual":
+            s["officers_allocated"]   = min(raw, s["capacity_officers"])
+            s["allocation_capped"]    = raw > s["capacity_officers"]
+            s["capacity_unconfirmed"] = False
+        else:
+            s["officers_allocated"]   = raw
+            s["allocation_capped"]    = False
+            s["capacity_unconfirmed"] = True
+
+    return stations
+
+
+def update_station_capacity(station_code: int, officers: int, vehicles: int) -> None:
+    now = _now()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """UPDATE police_stations
+               SET capacity_officers=?, capacity_vehicles=?,
+                   capacity_source='manual', updated_at=?
+               WHERE station_code=?""",
+            (officers, vehicles, now, station_code),
+        )
+        conn.commit()
+
+
+def get_all_stations() -> list[dict]:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM police_stations ORDER BY dcp_zone, station_name"
+        ).fetchall()
+    return [dict(r) for r in rows]
