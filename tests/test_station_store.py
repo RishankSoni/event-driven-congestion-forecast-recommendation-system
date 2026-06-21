@@ -280,26 +280,25 @@ def test_rank_stations_btp_boost(db_with_events):
 
 
 def test_rank_stations_workload_penalty(db_with_events):
-    # Station A: 3km, workload=0 → score ≈ 3.0
-    # Station B: 1km, workload=2 → score ≈ 1.0 + 2*1.5 = 4.0 → A should rank first
+    # Station A: 3km, dcp=North, workload=0 → score ≈ 3.0
+    # Station B: 1km, dcp=Central, workload=2 → score ≈ 1.0 + 2*1.5 = 4.0 → A ranks first
     from src import event_store
     with sqlite3.connect(db_with_events) as conn:
         conn.execute("DELETE FROM police_stations")
-        _insert_geocoded_station(conn, 1, "Station A",  12.97 + 0.027, 77.59)
-        _insert_geocoded_station(conn, 2, "Station B",  12.97 + 0.009, 77.59)
+        _insert_geocoded_station(conn, 1, "Station A", 12.97 + 0.027, 77.59, dcp="North")
+        _insert_geocoded_station(conn, 2, "Station B", 12.97 + 0.009, 77.59, dcp="Central")
         conn.commit()
 
-    # Add 2 active events assigned to Station B on same day/time
+    # Add 2 active events in zone="Central" (Station B's zone)
     for i in range(2):
         event_store.save_event({
-            "event_name":    f"Existing Event {i}",
-            "event_type":    "planned",
-            "event_cause":   "procession",
-            "corridor":      "MG Road",
-            "zone":          "Central",
-            "police_station": "Station B",
-            "event_date":    "2026-07-15",
-            "event_time":    "10:00",
+            "event_name":  f"Existing Event {i}",
+            "event_type":  "planned",
+            "event_cause": "procession",
+            "corridor":    "MG Road",
+            "zone":        "Central",
+            "event_date":  "2026-07-15",
+            "event_time":  "10:00",
         })
 
     results = station_store.rank_stations(12.97, 77.59, "2026-07-15", "10:00", top_n=2)

@@ -90,11 +90,10 @@ st.markdown("---")
 
 # ── Section 5: Support Requirements ──────────────────────────────────────────
 st.subheader("Support Requirements")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("QRT Units",        plan["qrt_units"])
-m2.metric("Medical Posts",    plan["medical_posts"])
-m3.metric("Surveillance Pts", len(plan["surveillance_points"]))
-m4.metric("VIP Protocol",     "Yes" if plan["vip_protocol"] else "No")
+m1, m2, m3 = st.columns(3)
+m1.metric("QRT Units",    plan["qrt_units"])
+m2.metric("Medical Posts", plan["medical_posts"])
+m3.metric("VIP Protocol",  "Yes" if plan["vip_protocol"] else "No")
 
 st.markdown("---")
 

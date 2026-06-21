@@ -350,20 +350,16 @@ _RANK_WEIGHTS = {
 
 _WORKLOAD_SQL = """
     SELECT COUNT(*) FROM planned_events
-    WHERE police_station = :station
+    WHERE zone = :dcp_zone
       AND status NOT IN ('cancelled', 'completed')
-      AND ABS(
-            julianday(:date || 'T' || :time)
-            - julianday(event_date || 'T' || event_time)
-          ) * 24 <= 4
 """
 
 
 def rank_stations(
     event_lat: float,
     event_lng: float,
-    event_date: str,
-    event_time: str,
+    event_date: str = "",
+    event_time: str = "",
     top_n: int = 5,
 ) -> list[dict]:
     """Rank geocoded stations by score = distance - btp_boost + workload_penalty.
@@ -384,7 +380,7 @@ def rank_stations(
             try:
                 workload = conn.execute(
                     _WORKLOAD_SQL,
-                    {"station": row["station_name"], "date": event_date, "time": event_time},
+                    {"dcp_zone": row["dcp_zone"]},
                 ).fetchone()[0]
             except sqlite3.OperationalError:
                 # planned_events table does not exist yet

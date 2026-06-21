@@ -49,13 +49,19 @@ fmap       = r["fmap"]
 risks      = r["risks"]
 
 # ── Build deployment_data (consumed by page 7) ────────────────────────────────
+_ranked: list[dict] = []
 if "save_data" in st.session_state:
     sd = st.session_state["save_data"]
+    _dur_label = r.get("duration")
+    _low_h  = state["dur_model"].get("low_thresh",  1.0)
+    _high_h = state["dur_model"].get("high_thresh", 3.0)
+    _dur_map = {"SHORT": _low_h, "MEDIUM": _high_h, "LONG": _high_h * 1.5}
+    _duration_h = _dur_map.get(_dur_label, 2.0)
     _event_for_plan = {
         **sd,
-        "severity":          severity,
-        "law_order_prob":    risks["law_order_prob"],
-        "expected_duration_h": 2.0,
+        "severity":            severity,
+        "law_order_prob":      risks["law_order_prob"],
+        "expected_duration_h": _duration_h,
     }
     _ranked = station_store.rank_stations(
         sd.get("latitude", 12.97),
@@ -64,8 +70,7 @@ if "save_data" in st.session_state:
         sd.get("event_time", ""),
         top_n=5,
     )
-    from src.station_store import allocate_officers as _alloc
-    _ranked = _alloc(_ranked, officers["total_min"])
+    _ranked = station_store.allocate_officers(_ranked, officers["total_min"])
     _plan = build_deployment_plan(
         _event_for_plan, _ranked, officers, barricades, diversions
     )
@@ -162,18 +167,15 @@ with left:
 
     _lat = st.session_state.get("save_data", {}).get("latitude")
     _lng = st.session_state.get("save_data", {}).get("longitude")
-    _edate = st.session_state.get("save_data", {}).get("event_date", "")
-    _etime = st.session_state.get("save_data", {}).get("event_time", "")
 
     if _lat is None or _lng is None:
         st.caption("No event location provided — station ranking unavailable.")
         _ranked_top3 = []
     else:
-        _ranked_top3 = station_store.rank_stations(_lat, _lng, _edate, _etime, top_n=3)
+        _ranked_top3 = _ranked[:3]
         if not _ranked_top3:
             st.caption("Station geocoding not yet run — visit Station Registry to enable ranking.")
         else:
-            _ranked_top3 = station_store.allocate_officers(_ranked_top3, officers["total_min"])
             _rows = []
             for _s in _ranked_top3:
                 _off = str(_s["officers_allocated"])
