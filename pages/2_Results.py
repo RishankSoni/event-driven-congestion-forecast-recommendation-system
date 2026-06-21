@@ -5,8 +5,9 @@ import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
 
-from src import event_store
+from src import event_store, station_store
 from src.app_cache import load_and_train
+from src.deployment_planner import build_deployment_plan
 
 
 def _build_save_record(sd: dict, r: dict) -> dict:
@@ -46,6 +47,33 @@ diversions = r["diversions"]
 neighbors  = r["neighbors"]
 fmap       = r["fmap"]
 risks      = r["risks"]
+
+# ── Build deployment_data (consumed by page 7) ────────────────────────────────
+if "save_data" in st.session_state:
+    sd = st.session_state["save_data"]
+    _event_for_plan = {
+        **sd,
+        "severity":          severity,
+        "law_order_prob":    risks["law_order_prob"],
+        "expected_duration_h": 2.0,
+    }
+    _ranked = station_store.rank_stations(
+        sd.get("latitude", 12.97),
+        sd.get("longitude", 77.59),
+        sd.get("event_date", ""),
+        sd.get("event_time", ""),
+        top_n=5,
+    )
+    from src.station_store import allocate_officers as _alloc
+    _ranked = _alloc(_ranked, officers["total_min"])
+    _plan = build_deployment_plan(
+        _event_for_plan, _ranked, officers, barricades, diversions
+    )
+    st.session_state["deployment_data"] = {
+        "event":    _event_for_plan,
+        "stations": _ranked,
+        "plan":     _plan,
+    }
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 st.sidebar.markdown("### Model Performance")
@@ -187,6 +215,7 @@ st.download_button(
 
 st.markdown("---")
 st.page_link("pages/3_Post_Event_Report.py", label="File Post-Event Report")
+st.page_link("pages/7_Deployment_Plan.py",   label="View Full Deployment Plan →")
 
 # ── Save to Event Calendar ────────────────────────────────────────────────────
 st.markdown("---")
