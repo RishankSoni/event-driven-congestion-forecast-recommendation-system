@@ -1,12 +1,18 @@
 # src/station_store.py
+import difflib
+import logging
+import math
 import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from src.event_store import DB_PATH
+
+logger = logging.getLogger(__name__)
 
 _CSV_PATH = Path("bangalore_city_police_stations_2012.csv")
 _BTP_CSV_URL = (
@@ -129,15 +135,6 @@ def _seed_from_csv() -> None:
         conn.commit()
 
 
-import difflib
-import logging
-import math
-
-import requests
-
-logger = logging.getLogger(__name__)
-
-
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     R = 6371.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -169,7 +166,6 @@ def geocode_all_stations(
         ).fetchall()
 
     total = len(pending)
-    geocoded_count = 0
 
     for i, row in enumerate(pending):
         query = f"{row['address_clean']}, Bangalore, India"
@@ -184,7 +180,6 @@ def geocode_all_stations(
                     (loc.latitude, loc.longitude, now, now, row["station_code"]),
                 )
                 conn.commit()
-            geocoded_count += 1
         if progress_callback:
             progress_callback(i + 1, total)
 
@@ -275,6 +270,12 @@ def _enrich_btp_from_df(btp_df: pd.DataFrame) -> None:
 
     now = _now()
     with sqlite3.connect(DB_PATH) as conn:
+        # Reset all stations to has_btp_pi=0, btp_match_confidence=NULL before re-enrichment
+        conn.execute(
+            "UPDATE police_stations SET has_btp_pi=0, btp_match_confidence=NULL, updated_at=?",
+            (now,),
+        )
+        conn.commit()
         for station in stations:
             sname = station["station_name"].lower().strip()
             best_score = 0.0
