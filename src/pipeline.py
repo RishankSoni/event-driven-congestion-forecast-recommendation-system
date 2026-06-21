@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
-DATA_PATH = Path(__file__).parent.parent / "data" / "events_enriched.csv"
+DATA_PATH = Path(__file__).parent.parent / "data" / "events.csv"
 
 _HIGH_CAUSE = {"accident", "water_logging", "procession", "vip_movement", "protest"}
 
@@ -61,15 +61,12 @@ def load_raw(path=DATA_PATH) -> pd.DataFrame:
         .astype(bool)
         .astype(object)
     )
-    if "closed_datetime" in df.columns:
-        df["duration_h"] = (
-            df["closed_datetime"] - df["start_datetime"]
-        ).dt.total_seconds() / 3600
-        df["duration_h"] = df["duration_h"].where(
-            (df["duration_h"] > 0) & (df["duration_h"] <= 24)
-        )
-    else:
-        df["duration_h"] = float("nan")
+    df["duration_h"] = (
+        df["closed_datetime"] - df["start_datetime"]
+    ).dt.total_seconds() / 3600
+    df["duration_h"] = df["duration_h"].where(
+        (df["duration_h"] > 0) & (df["duration_h"] <= 24)
+    )
     for col in ["event_cause", "event_type", "corridor", "zone", "police_station", "junction", "priority"]:
         if col in df.columns:
             df[col] = df[col].fillna("unknown")
@@ -104,16 +101,6 @@ def load_raw(path=DATA_PATH) -> pd.DataFrame:
     df["estimated_attendance"] = 0
     df["has_vip"]              = 0
     df["is_route_event"]       = 0
-
-    # Weather features — use CSV values when present, fall back to dry/warm defaults
-    if "rain_mm" in df.columns:
-        df["rain_mm"] = pd.to_numeric(df["rain_mm"], errors="coerce").fillna(0.0)
-    else:
-        df["rain_mm"] = 0.0
-    if "temperature_c" in df.columns:
-        df["temperature_c"] = pd.to_numeric(df["temperature_c"], errors="coerce").fillna(25.0)
-    else:
-        df["temperature_c"] = 25.0
 
     return df.reset_index(drop=True)
 
