@@ -14,14 +14,14 @@ load_and_train()  # ensures init_station_db() has been called
 
 stations = station_store.get_all_stations()
 
-tab_map, tab_table, tab_geocoding = st.tabs(["Map", "Stations Table", "Geocoding"])
+tab_map, tab_table, tab_geocoding = st.tabs(["Station Map", "Station Table", "Geocoding"])
 
 # ── Tab 1: Map ────────────────────────────────────────────────────────────────
 with tab_map:
     _COLOR = {
         "geocoded":               "#28a745",
         "zone_centroid_fallback": "#fd7e14",
-        "pending":                "#6c757d",
+        "pending":                "#FF4444",
     }
     m = folium.Map(location=[12.97, 77.59], zoom_start=11)
     for s in stations:
@@ -45,7 +45,7 @@ with tab_map:
             tooltip=s["station_name"],
         ).add_to(m)
     st_folium(m, width=900, height=550, returned_objects=[])
-    st.caption("🟢 Geocoded &nbsp;&nbsp; 🟠 Zone centroid fallback &nbsp;&nbsp; ⚫ Pending")
+    st.caption("🟢 Geocoded &nbsp;&nbsp; 🟠 Zone centroid fallback &nbsp;&nbsp; 🔴 Pending")
 
 # ── Tab 2: Stations Table ─────────────────────────────────────────────────────
 with tab_table:
@@ -116,7 +116,8 @@ with tab_geocoding:
             st.session_state["geocoding_running"] = False
 
         if not st.session_state["geocoding_running"]:
-            if st.button("🌐 Geocode All Stations", disabled=st.session_state["geocoding_running"]):
+            st.warning("Geocoding uses Nominatim at 1 request/second. For 110 stations this takes ~2 minutes.")
+            if st.button("🌐 Geocode All Stations"):
                 st.session_state["geocoding_running"] = True
                 st.rerun()
         else:
