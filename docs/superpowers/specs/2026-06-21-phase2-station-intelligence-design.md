@@ -110,7 +110,8 @@ def geocode_all_stations(progress_callback=None) -> dict:
 ### BTP Enrichment
 
 Run after geocode loop:
-- Download BTP Officers CSV from OpenCity URL (hardcoded in `station_store.py`)
+- Download BTP Officers CSV from OpenCity URL (hardcoded constant `_BTP_CSV_URL` in `station_store.py`)
+- On download failure: log warning, leave all `has_btp_pi = 0`, surface `st.warning("BTP data unavailable — traffic PI flags not set")` in Registry tab; geocoding still completes
 - Filter rows where `Officer == "Police Inspector Traffic"`
 - For each BTP row, match `Traffic Police Station` to `station_name` using:
   1. Exact match (case-insensitive) → `has_btp_pi = 1`, `btp_match_confidence = 1.0`
@@ -341,7 +342,7 @@ Three tabs:
 **Tab 2 — Stations Table**: `st.data_editor` — editable: `capacity_officers`, `capacity_vehicles`. Read-only: all other columns.
 - `⚠ Default` badge in Capacity column when `capacity_source = 'default'`
 - `✓ BTP` badge with match confidence decimal when `has_btp_pi = 1`
-- On save: upserts changed rows to SQLite, sets `capacity_source = 'manual'`
+- On save: calls `update_station_capacity(station_code, officers, vehicles)` which upserts to SQLite and sets `capacity_source = 'manual'`
 
 **Tab 3 — Geocoding**: Summary metrics (geocoded / fallback / pending counts). "Geocode All Stations" button with `st.progress` bar and per-station `st.empty()` status line. Button disabled while running. Individual station reset available via row action in the table.
 
@@ -387,7 +388,7 @@ Three tabs:
 | `test_allocate_officers_sums_to_total` | Allocated officers sum ≈ total (rounding ±1) |
 | `test_allocate_cap_applied_only_for_manual` | Default stations uncapped; manual stations capped |
 | `test_allocate_both_branches_set_all_keys` | `capacity_unconfirmed` and `allocation_capped` always present |
-| `test_capacity_update_sets_source_manual` | Editing capacity sets `capacity_source = 'manual'` |
+| `test_capacity_update_sets_source_manual` | `update_station_capacity()` sets `capacity_source = 'manual'` |
 
 ### `tests/test_deployment_planner.py`
 
