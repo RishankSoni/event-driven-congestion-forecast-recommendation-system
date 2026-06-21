@@ -156,6 +156,46 @@ with left:
     for d in diversions:
         st.markdown(f"  - {d}")
 
+    # ── Recommended Stations ──────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Recommended Stations")
+
+    _lat = st.session_state.get("save_data", {}).get("latitude")
+    _lng = st.session_state.get("save_data", {}).get("longitude")
+    _edate = st.session_state.get("save_data", {}).get("event_date", "")
+    _etime = st.session_state.get("save_data", {}).get("event_time", "")
+
+    if _lat is None or _lng is None:
+        st.caption("No event location provided — station ranking unavailable.")
+        _ranked_top3 = []
+    else:
+        _ranked_top3 = station_store.rank_stations(_lat, _lng, _edate, _etime, top_n=3)
+        if not _ranked_top3:
+            st.caption("Station geocoding not yet run — visit Station Registry to enable ranking.")
+        else:
+            from src.station_store import allocate_officers as _alloc_top3
+            _ranked_top3 = _alloc_top3(_ranked_top3, officers["total_min"])
+            _rows = []
+            for _s in _ranked_top3:
+                _off = str(_s["officers_allocated"])
+                if _s.get("capacity_unconfirmed"):
+                    _off = f"⚠ {_off}"
+                elif _s.get("allocation_capped"):
+                    _off = f"🔒 {_off}"
+                _rows.append({
+                    "Station":   _s["station_name"],
+                    "Zone":      _s["dcp_zone"],
+                    "Dist (km)": f"{_s['distance_km']:.1f}",
+                    "ETA (min)": _s["response_min"],
+                    "Officers":  _off,
+                })
+            st.dataframe(
+                pd.DataFrame(_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.page_link("pages/7_Deployment_Plan.py", label="View Full Deployment Plan →")
+
     # ── SHAP Explainability ────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown(f"### Why {severity}?")
@@ -215,7 +255,6 @@ st.download_button(
 
 st.markdown("---")
 st.page_link("pages/3_Post_Event_Report.py", label="File Post-Event Report")
-st.page_link("pages/7_Deployment_Plan.py",   label="View Full Deployment Plan →")
 
 # ── Save to Event Calendar ────────────────────────────────────────────────────
 st.markdown("---")
