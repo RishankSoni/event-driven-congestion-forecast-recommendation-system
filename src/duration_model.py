@@ -104,6 +104,9 @@ def train_duration_model(train_df: pd.DataFrame) -> dict:
     y_log    = np.log1p(valid["duration_h"])
     y_dur_h  = valid["duration_h"]
 
+    if len(X) < 5:
+        return {"pipeline": "MEDIUM", "kind": "baseline", "low_thresh": low_thresh, "high_thresh": high_thresh}
+
     X_tr, X_te, ylab_tr, ylab_te, ylog_tr, ylog_te, ydur_tr, ydur_te = train_test_split(
         X, y_label, y_log, y_dur_h, test_size=0.2, random_state=42
     )
