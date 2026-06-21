@@ -1,5 +1,4 @@
 # tests/test_deployment_planner.py
-import pytest
 from src import deployment_planner
 
 
@@ -115,4 +114,4 @@ def test_plan_structure_keys():
         "barricade_positions", "diversion_routes", "qrt_recommended", "qrt_units",
         "medical_posts", "surveillance_points", "vip_protocol", "timeline",
     }
-    assert required.issubset(plan.keys())
+    assert set(plan.keys()) == required

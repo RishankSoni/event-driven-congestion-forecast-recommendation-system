@@ -1,17 +1,11 @@
 # src/deployment_planner.py
 
-_ATTENDANCE_BANDS = [
-    (500,   "small gathering"),
-    (2000,  "moderate crowd"),
-    (10000, "large crowd"),
-]
-
-
 def _attendance_band(n: int) -> str:
-    for threshold, label in _ATTENDANCE_BANDS:
-        if n < threshold:
-            return label
-    return "mass event"
+    if n < 500:
+        return "small"
+    if n < 5000:
+        return "medium"
+    return "large"
 
 
 def build_deployment_plan(
@@ -59,7 +53,7 @@ def build_deployment_plan(
         "qrt_recommended":     qrt_recommended,
         "qrt_units":           qrt_units,
         "medical_posts":       medical_posts,
-        "surveillance_points": barricades,
+        "surveillance_points": [],
         "vip_protocol":        bool(event.get("has_vip", 0)),
         "timeline":            timeline,
     }
