@@ -173,8 +173,7 @@ with left:
         if not _ranked_top3:
             st.caption("Station geocoding not yet run — visit Station Registry to enable ranking.")
         else:
-            from src.station_store import allocate_officers as _alloc_top3
-            _ranked_top3 = _alloc_top3(_ranked_top3, officers["total_min"])
+            _ranked_top3 = station_store.allocate_officers(_ranked_top3, officers["total_min"])
             _rows = []
             for _s in _ranked_top3:
                 _off = str(_s["officers_allocated"])
