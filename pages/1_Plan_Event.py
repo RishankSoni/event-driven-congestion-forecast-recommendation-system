@@ -203,4 +203,27 @@ if submitted:
         "has_vip":               has_vip,
         "is_route_event":        is_route_event,
     }
+    st.session_state["save_data"] = {
+        "event_name":            event_name,
+        "event_type":            event_type,
+        "event_cause":           event_cause,
+        "corridor":              corridor,
+        "zone":                  zone,
+        "police_station":        police,
+        "junction":              "unknown",
+        "event_date":            event_date.isoformat(),
+        "event_time":            event_time.strftime("%H:%M"),
+        "estimated_attendance":  int(estimated_attendance),
+        "has_vip":               has_vip,
+        "is_route_event":        is_route_event,
+        "requires_road_closure": int(road_closure),
+        "latitude":              lat,
+        "longitude":             lng,
+        "holiday_name":          holiday_name_input,
+        "holiday_risk_tier":     holiday_risk_tier,
+        "priority":              priority,
+        "feature_vector_json":   features,
+    }
+    # Clear any stale saved-event marker from a previous submission
+    st.session_state.pop("event_saved_id", None)
     st.switch_page("pages/2_Results.py")
