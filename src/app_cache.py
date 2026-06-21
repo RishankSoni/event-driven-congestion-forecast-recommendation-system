@@ -27,6 +27,8 @@ def get_road_graph() -> nx.MultiDiGraph:
 def load_and_train() -> dict:
     from src import event_store as _event_store
     _event_store.init_db()
+    from src import station_store as _station_store
+    _station_store.init_station_db()
     df = load_raw()
     df["window_count"] = compute_window_counts(df)
 
