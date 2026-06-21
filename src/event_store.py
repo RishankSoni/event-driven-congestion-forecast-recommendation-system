@@ -193,27 +193,19 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 
 def _build_zone_centroids() -> dict[str, tuple[float, float]]:
-    """Build zone centroid lookup from geocoded police stations only."""
-    csv_path = Path("bangalore_city_police_stations_2012.csv")
-    if not csv_path.exists():
-        return {}
+    """Read zone centroids from SQLite (populated by station_store geocoding pipeline).
+    Falls back to module-level _ZONE_CENTROIDS when table missing or empty (Phase 1 / pre-geocoding)."""
     try:
-        df = pd.read_csv(csv_path)
-        required = {"location_source", "latitude", "longitude", "DCP"}
-        if not required.issubset(df.columns):
-            return {}
-        geocoded = df[df["location_source"] == "geocoded"].dropna(
-            subset=["latitude", "longitude"]
-        )
-        if geocoded.empty:
-            return {}
-        return {
-            division: (grp["latitude"].mean(), grp["longitude"].mean())
-            for division, grp in geocoded.groupby("DCP")
-        }
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute(
+                "SELECT dcp_zone, latitude, longitude FROM zone_centroids"
+            ).fetchall()
+        if rows:
+            return {r[0]: (r[1], r[2]) for r in rows}
     except Exception:
-        logger.warning("Failed to build zone centroids from police station CSV")
-        return {}
+        pass
+    # Fall back to the module-level dict (may be monkeypatched in tests or pre-populated)
+    return globals().get("_ZONE_CENTROIDS", {})
 
 
 _ZONE_CENTROIDS: dict[str, tuple[float, float]] = _build_zone_centroids()
@@ -256,7 +248,7 @@ def check_conflicts(event_data: dict) -> tuple[list[dict], str]:
                     {**base, "zone": zone},
                 ).fetchall()
             ]
-            centroid = _ZONE_CENTROIDS.get(zone)
+            centroid = _build_zone_centroids().get(zone)
             if centroid is None:
                 note = (
                     f"Location precision unavailable for {zone} — "
