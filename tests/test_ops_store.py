@@ -1,5 +1,4 @@
 # tests/test_ops_store.py
-import sqlite3
 from datetime import date, timedelta
 
 import pytest
@@ -18,7 +17,7 @@ def _patch_db(tmp_path, monkeypatch):
 
 
 def _save(name, corridor="MG Road", zone="Central", date_str=None,
-          time_str="10:00", lat=12.97, lng=77.59, status="planned",
+          time_str="10:00", lat=12.97, lng=77.59,
           attendance=500, officer_min=5, officer_max=8):
     today = date_str or date.today().strftime("%Y-%m-%d")
     return event_store.save_event({
