@@ -41,6 +41,12 @@ st.markdown(
 corridors    = sorted(train_df["corridor"].dropna().unique().tolist())
 event_causes = sorted(train_df["event_cause"].dropna().unique().tolist())
 
+# Causes that are unplanned incidents — excluded from the planned-event dropdown
+_UNPLANNED_CAUSES = {
+    "accident", "vehicle_breakdown", "tree_fall",
+    "water_logging", "natural_disaster", "riot",
+}
+
 # ── Event type toggle ────────────────────────────────────────────────────────
 event_type_display = st.radio(
     "Event type", ["Planned", "Unplanned"], horizontal=True, key="event_type_radio"
@@ -53,14 +59,23 @@ with st.form("event_form"):
 
     # ── Core fields (always visible) ─────────────────────────────────────────
     with col1:
-        event_name  = st.text_input("Event name", value="Public Rally")
-        default_idx = event_causes.index("public_event") if "public_event" in event_causes else 0
-        event_cause = st.selectbox("Event cause", event_causes, index=default_idx)
+        event_name = st.text_input("Event name", value="Public Rally")
+        if is_planned:
+            filtered_causes = [c for c in event_causes if c not in _UNPLANNED_CAUSES]
+            default_idx = filtered_causes.index("public_event") if "public_event" in filtered_causes else 0
+        else:
+            filtered_causes = event_causes
+            default_idx = 0
+        event_cause = st.selectbox("Event cause", filtered_causes, index=default_idx)
         corridor    = st.selectbox("Primary corridor", corridors)
         priority    = st.selectbox("Priority", ["High", "Low"], index=0)
     with col2:
-        event_date   = st.date_input("Date", value=datetime.date.today())
-        event_time   = st.time_input("Start time", value=datetime.time(18, 0))
+        if is_planned:
+            event_date = st.date_input("Date", value=datetime.date.today())
+            event_time = st.time_input("Start time", value=datetime.time(18, 0))
+        else:
+            event_date = datetime.date.today()
+            event_time = datetime.datetime.now().time()
         road_closure = st.checkbox("Requires road closure?", value=False)
 
     # ── Calendar strip (auto-filled, officer can override) ───────────────────
