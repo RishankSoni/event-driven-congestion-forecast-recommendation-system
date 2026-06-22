@@ -111,7 +111,6 @@ with st.form("event_form"):
     # ── Planned-only fields ──────────────────────────────────────────────────
     estimated_attendance = 0
     has_vip       = 0
-    is_route_event = 0
 
     if is_planned:
         st.markdown("---")
