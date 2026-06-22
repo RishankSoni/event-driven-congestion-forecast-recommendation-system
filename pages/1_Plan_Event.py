@@ -3,6 +3,7 @@ import datetime
 
 import streamlit as st
 
+from src import station_store
 from src.app_cache import get_road_graph, load_and_train
 from src.calendar_intel import get_holiday_info
 from src.duration_model import predict_duration
@@ -178,9 +179,13 @@ if submitted:
     n_adj      = min(3, len(barricades))
     officers   = officer_count(severity, n_adjacent_junctions=n_adj)
     diversions = get_diversions(diversion_graph, corridor, hb)
-    fmap       = build_map(
+    _all_stations    = station_store.get_all_stations()
+    _ranked_stations = station_store.rank_stations(lat, lng, top_n=5)
+    fmap             = build_map(
         lat, lng, severity, barricades, diversions,
-        officers, train_df, event_name, graph, corridor=corridor
+        officers, train_df, event_name, graph, corridor=corridor,
+        stations=_all_stations,
+        ranked_stations=_ranked_stations,
     )
 
     st.session_state["result_data"] = {
