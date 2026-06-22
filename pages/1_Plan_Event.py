@@ -54,6 +54,14 @@ event_type_display = st.radio(
 is_planned = event_type_display == "Planned"
 event_type = "planned" if is_planned else "unplanned"
 
+# ── Route format toggle — OUTSIDE form so clicking it reruns immediately ─────
+is_route_event = 0
+if is_planned:
+    route_fmt = st.radio(
+        "Event format", ["Venue-based", "Route-based"], horizontal=True, key="route_fmt_radio"
+    )
+    is_route_event = int(route_fmt == "Route-based")
+
 with st.form("event_form"):
     col1, col2 = st.columns(2)
 
@@ -117,10 +125,6 @@ with st.form("event_form"):
         with p2:
             st.text_input("Organizer (optional)", value="")
 
-        route_fmt = st.radio(
-            "Event format", ["Venue-based", "Route-based"], horizontal=True
-        )
-        is_route_event = int(route_fmt == "Route-based")
         if is_route_event:
             r1, r2 = st.columns(2)
             with r1:
