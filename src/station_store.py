@@ -201,11 +201,43 @@ def geocode_all_stations(
         if progress_callback:
             progress_callback(i + 1, total)
 
+    _retry_fallback_stations(_geocoder)
     _apply_zone_centroid_fallback()
     _compute_and_store_zone_centroids()
     _enrich_btp()
 
     return get_geocode_summary()
+
+
+def _retry_fallback_stations(geocoder, progress_callback=None) -> int:
+    """Re-attempt geocoding for zone_centroid_fallback stations using the cascade.
+    Returns the count of stations upgraded to 'geocoded'."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        fallback = conn.execute(
+            "SELECT station_code, station_name, acp_zone FROM police_stations "
+            "WHERE location_source = 'zone_centroid_fallback'"
+        ).fetchall()
+
+    improved = 0
+    total = len(fallback)
+    for i, row in enumerate(fallback):
+        result = _try_geocode_strategies(row["station_name"], row["acp_zone"], geocoder)
+        if result is not None:
+            lat, lng = result
+            now = _now()
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.execute(
+                    "UPDATE police_stations SET latitude=?, longitude=?, "
+                    "location_source='geocoded', geocoded_at=?, updated_at=? "
+                    "WHERE station_code=?",
+                    (lat, lng, now, now, row["station_code"]),
+                )
+                conn.commit()
+            improved += 1
+        if progress_callback:
+            progress_callback(i + 1, total)
+    return improved
 
 
 def _apply_zone_centroid_fallback() -> None:

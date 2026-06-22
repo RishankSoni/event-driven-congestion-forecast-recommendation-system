@@ -73,7 +73,7 @@ def test_cascade_query_strings_are_correct():
 import src.station_store as _ss
 
 
-def _make_test_db(tmp_path, stations: list) -> object:
+def _make_test_db(tmp_path, stations: list):
     """Create a minimal test DB with police_stations and zone_centroids tables."""
     db = tmp_path / "test.db"
     with sqlite3.connect(db) as conn:
@@ -81,6 +81,7 @@ def _make_test_db(tmp_path, stations: list) -> object:
             CREATE TABLE police_stations (
                 station_code    INTEGER PRIMARY KEY,
                 station_name    TEXT,
+                address_clean   TEXT,
                 acp_zone        TEXT,
                 dcp_zone        TEXT,
                 latitude        REAL,
@@ -100,11 +101,11 @@ def _make_test_db(tmp_path, stations: list) -> object:
         for s in stations:
             conn.execute(
                 "INSERT INTO police_stations "
-                "(station_code, station_name, acp_zone, dcp_zone, latitude, longitude, "
-                "location_source, geocoded_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                "(station_code, station_name, address_clean, acp_zone, dcp_zone, latitude, longitude, "
+                "location_source, geocoded_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
-                    s["station_code"], s["station_name"], s["acp_zone"],
-                    s.get("dcp_zone", "Central"),
+                    s["station_code"], s["station_name"], s.get("address_clean", ""),
+                    s["acp_zone"], s.get("dcp_zone", "Central"),
                     s.get("latitude"), s.get("longitude"),
                     s["location_source"], None, "2024-01-01",
                 ),
