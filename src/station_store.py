@@ -61,6 +61,24 @@ def _now() -> str:
     return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def _try_geocode_strategies(
+    station_name: str,
+    acp_zone: str,
+    geocoder,
+) -> tuple[float, float] | None:
+    """Try 3 progressively simpler Nominatim queries. Returns (lat, lng) or None."""
+    queries = [
+        f"{station_name} Police Station, {acp_zone}, Bangalore, Karnataka, India",
+        f"{station_name} Police Station, Bangalore, Karnataka, India",
+        f"{station_name}, Bangalore, India",
+    ]
+    for q in queries:
+        loc = geocoder(q)
+        if loc is not None:
+            return (loc.latitude, loc.longitude)
+    return None
+
+
 def _clean_station_field(raw: str) -> tuple[str, str]:
     """Return (station_name, address_clean) from raw Station CSV field."""
     cleaned = re.sub(r"Ph\s*no\..*", "", raw, flags=re.IGNORECASE).strip()
@@ -161,23 +179,23 @@ def geocode_all_stations(
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         pending = conn.execute(
-            "SELECT station_code, station_name, address_clean FROM police_stations "
+            "SELECT station_code, station_name, address_clean, acp_zone FROM police_stations "
             "WHERE location_source = 'pending'"
         ).fetchall()
 
     total = len(pending)
 
     for i, row in enumerate(pending):
-        query = f"{row['address_clean']}, Bangalore, India"
-        loc = _geocoder(query)
+        result = _try_geocode_strategies(row["station_name"], row["acp_zone"], _geocoder)
         now = _now()
-        if loc is not None:
+        if result is not None:
+            lat, lng = result
             with sqlite3.connect(DB_PATH) as conn:
                 conn.execute(
                     "UPDATE police_stations SET latitude=?, longitude=?, "
                     "location_source='geocoded', geocoded_at=?, updated_at=? "
                     "WHERE station_code=?",
-                    (loc.latitude, loc.longitude, now, now, row["station_code"]),
+                    (lat, lng, now, now, row["station_code"]),
                 )
                 conn.commit()
         if progress_callback:
