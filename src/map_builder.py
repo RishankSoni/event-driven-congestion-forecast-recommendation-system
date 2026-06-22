@@ -65,6 +65,8 @@ def build_map(
     event_name: str,
     G: nx.MultiDiGraph,
     corridor: str = "",
+    stations: list | None = None,
+    ranked_stations: list | None = None,
 ) -> folium.Map:
     color  = _SEVERITY_COLOR[severity]
     radius = _SEVERITY_RADIUS[severity]
@@ -138,6 +140,52 @@ def build_map(
                 all_coords.extend(path)
             except Exception:
                 pass
+
+    # ── Station overlay ───────────────────────────────────────────────────────
+    if stations:
+        _SOURCE_COLOR = {
+            "geocoded":               "#28a745",
+            "zone_centroid_fallback": "#fd7e14",
+        }
+        _coords = {
+            s["station_code"]: (s["latitude"], s["longitude"])
+            for s in stations
+            if s["latitude"] is not None
+        }
+        ranked_codes = {s["station_code"] for s in (ranked_stations or [])}
+
+        # Non-ranked stations: circle markers
+        for s in stations:
+            if s["latitude"] is None or s["station_code"] in ranked_codes:
+                continue
+            folium.CircleMarker(
+                location=[s["latitude"], s["longitude"]],
+                radius=5,
+                color=_SOURCE_COLOR.get(s["location_source"], "#6c757d"),
+                fill=True,
+                fill_opacity=0.7,
+                popup=folium.Popup(
+                    f"<b>{s['station_name']}</b><br>{s['dcp_zone']}<br>{s['location_source']}",
+                    max_width=200,
+                ),
+                tooltip=s["station_name"],
+            ).add_to(m)
+
+        # Ranked stations: pin markers rendered on top
+        for rank_idx, s in enumerate(ranked_stations or []):
+            coords = _coords.get(s["station_code"])
+            if coords is None:
+                continue
+            folium.Marker(
+                location=list(coords),
+                popup=folium.Popup(
+                    f"<b>#{rank_idx + 1} {s['station_name']}</b><br>"
+                    f"{s['distance_km']} km | {s['response_min']} min",
+                    max_width=200,
+                ),
+                tooltip=f"#{rank_idx + 1} {s['station_name']}",
+                icon=folium.Icon(color="blue", icon="home"),
+            ).add_to(m)
 
     if len(all_coords) > 1:
         m.fit_bounds(all_coords)
