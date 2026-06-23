@@ -8,6 +8,7 @@ from streamlit_folium import st_folium
 from src import event_store, station_store
 from src.app_cache import load_and_train
 from src.deployment_planner import build_deployment_plan
+from src.ui import inject_css, page_header, section_header, sidebar_metrics, severity_badge, risk_gauge
 
 
 def _build_save_record(sd: dict, r: dict) -> dict:
@@ -29,6 +30,7 @@ def _build_save_record(sd: dict, r: dict) -> dict:
     }
 
 st.set_page_config(page_title="Event Congestion Planner — Results", layout="wide")
+inject_css()
 
 state = load_and_train()   # hits the cache; no re-training
 
@@ -81,30 +83,15 @@ if "save_data" in st.session_state:
     }
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
-st.sidebar.markdown("### Model Performance")
-st.sidebar.metric("CV macro-F1 (train)", f"{state['cv_f1']:.3f}")
-st.sidebar.metric("Test macro-F1",       f"{state['test_f1']:.3f}")
-st.sidebar.metric("Congestion AUC",      f"{state['risk_models']['congestion_auc']:.3f}")
-st.sidebar.metric("Law & Order AUC",     f"{state['risk_models']['law_order_auc']:.3f}")
+sidebar_metrics(state)
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.page_link("pages/1_Plan_Event.py", label="← Back to form")
-st.title(f"Deployment Plan — {r['event_name']}")
+page_header(f"Deployment Plan — {r['event_name']}")
 
 conf_pct = confidence.get(severity, 0.0) * 100
 
 left, right = st.columns([1, 2])
-
-
-def _risk_bar(prob: float) -> str:
-    filled = int(round(prob * 10))
-    return "█" * filled + "░" * (10 - filled)
-
-
-def _risk_label(prob: float) -> str:
-    if prob < 0.33:  return "LOW"
-    if prob < 0.66:  return "MEDIUM"
-    return "HIGH"
 
 
 def _render_shap_drivers(drivers: list[dict]) -> None:
@@ -116,8 +103,13 @@ def _render_shap_drivers(drivers: list[dict]) -> None:
 
 
 with left:
-    st.markdown(f"## {severity}")
-    st.caption(f"Confidence: {conf_pct:.0f}%  |  Corridor: {r['corridor']}")
+    severity_badge(severity)
+    st.markdown(
+        f'<span style="color:#94A3B8;font-size:0.85rem">'
+        f'Confidence: {conf_pct:.0f}%  |  Corridor: {r["corridor"]}</span>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("")
 
     # Duration
     dur_model  = state["dur_model"]
@@ -132,24 +124,14 @@ with left:
     st.markdown(f"**Duration Forecast:** {_DUR_LABELS.get(_dur, _dur)}")
 
     # ── Risk Forecast ─────────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### Risk Forecast")
+    section_header("Risk Forecast")
     cong_prob = risks["congestion_prob"]
     law_prob  = risks["law_order_prob"]
-    st.markdown(
-        f"**Traffic Congestion** &nbsp; "
-        f"`{_risk_bar(cong_prob)}` &nbsp; "
-        f"{cong_prob*100:.0f}% — **{_risk_label(cong_prob)}**"
-    )
-    st.markdown(
-        f"**Law & Order** &nbsp; "
-        f"`{_risk_bar(law_prob)}` &nbsp; "
-        f"{law_prob*100:.0f}% — **{_risk_label(law_prob)}**"
-    )
+    risk_gauge("Traffic Congestion", cong_prob)
+    risk_gauge("Law & Order", law_prob)
 
     # ── Action Plan ───────────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### Action Plan")
+    section_header("Action Plan")
     st.markdown(f"**Officers:** {officers['total_min']}–{officers['total_max']} total")
     st.markdown(
         f"  ({officers['primary_min']}–{officers['primary_max']} on primary corridor)"
@@ -162,8 +144,7 @@ with left:
         st.markdown(f"  - {d}")
 
     # ── Recommended Stations ──────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### Recommended Stations")
+    section_header("Recommended Stations")
 
     _lat = st.session_state.get("save_data", {}).get("latitude")
     _lng = st.session_state.get("save_data", {}).get("longitude")
@@ -195,11 +176,12 @@ with left:
                 use_container_width=True,
                 hide_index=True,
             )
-            st.page_link("pages/7_Deployment_Plan.py", label="View Full Deployment Plan →")
+
+    # Always show Deployment Plan link regardless of station geocoding status
+    st.page_link("pages/7_Deployment_Plan.py", label="View Full Deployment Plan →")
 
     # ── SHAP Explainability ────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown(f"### Why {severity}?")
+    section_header(f"Why {severity}?")
     _render_shap_drivers(r["shap_severity"])
 
     with st.expander(f"Why traffic congestion = {cong_prob*100:.0f}%?"):
@@ -209,8 +191,7 @@ with left:
         _render_shap_drivers(r["shap_law"])
 
     # ── Similar past events ───────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### 5 Similar Past Events")
+    section_header("5 Similar Past Events")
     if not neighbors.empty:
         display = neighbors[
             ["corridor", "event_cause", "severity", "impact_score"]
@@ -224,11 +205,11 @@ with left:
     )
 
 with right:
-    st.markdown("### Impact Map")
+    section_header("Impact Map")
     st_folium(fmap, width=700, height=520, returned_objects=[])
 
 # ── Export ────────────────────────────────────────────────────────────────────
-st.markdown("---")
+section_header("Export")
 export_rows = [
     ("Event",                r["event_name"]),
     ("Corridor",             r["corridor"]),
@@ -254,11 +235,10 @@ st.download_button(
     mime="text/csv",
 )
 
-st.markdown("---")
 st.page_link("pages/3_Post_Event_Report.py", label="File Post-Event Report")
 
 # ── Save to Event Calendar ────────────────────────────────────────────────────
-st.markdown("---")
+section_header("Save to Event Calendar")
 if "save_data" not in st.session_state:
     st.info("Return to the form and resubmit to enable saving this event.")
 else:
