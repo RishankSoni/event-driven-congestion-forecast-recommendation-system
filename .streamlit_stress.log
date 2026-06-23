@@ -1,0 +1,10 @@
+2026-06-22 13:06:33.569 Uvicorn server started on 0.0.0.0:8502
+C:\Users\HP\AppData\Local\Programs\Python\Python313\Lib\site-packages\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.4.3)/charset_normalizer (3.4.4) doesn't match a supported version!
+  warnings.warn(
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8502
+  Network URL: http://10.32.251.105:8502
+  External URL: http://106.194.177.165:8502
+

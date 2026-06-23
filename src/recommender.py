@@ -11,8 +11,9 @@ _OFFICER_TABLE = {
 
 
 def officer_count(severity: str, n_adjacent_junctions: int) -> dict:
-    """Returns officer deployment numbers for the given severity level."""
-    spec = _OFFICER_TABLE[severity]
+    """Returns officer deployment numbers for the given severity level.
+    Falls back to MEDIUM for any unrecognised severity value."""
+    spec = _OFFICER_TABLE.get(severity, _OFFICER_TABLE["MEDIUM"])
     lo, hi = spec["primary"]
     adj    = spec["per_junction"] * n_adjacent_junctions
     return {
