@@ -5,6 +5,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from src.ui import inject_css, page_header, section_header
+
 REPORT_FILE = Path("data/reports/post_event_reports.csv")
 
 _COLS = [
@@ -18,10 +20,10 @@ _COLS = [
 ]
 
 st.set_page_config(page_title="Post-Event Report", layout="wide")
+inject_css()
 st.page_link("pages/1_Plan_Event.py", label="← Back to form")
 st.page_link("pages/2_Results.py",    label="← Back to results")
-st.title("Post-Event Report")
-st.markdown("File an after-action report to improve future predictions.")
+page_header("Post-Event Report", subtitle="File an after-action report to improve future predictions.")
 
 # ── Pre-fill from session state if available ─────────────────────────────────
 r     = st.session_state.get("result_data", {})
@@ -42,7 +44,7 @@ pred_duration    = r.get("duration", "")        if r else ""
 
 # ── Report form ───────────────────────────────────────────────────────────────
 with st.form("post_event_form"):
-    st.markdown("### Event Identity")
+    section_header("Event Identity")
     id1, id2 = st.columns(2)
     with id1:
         event_name = st.text_input("Event name", value=prefill_name)
@@ -53,8 +55,7 @@ with st.form("post_event_form"):
         )
         event_date = st.date_input("Event date", value=datetime.date.today())
 
-    st.markdown("---")
-    st.markdown("### Actual Deployment")
+    section_header("Actual Deployment")
     d1, d2, d3 = st.columns(3)
     with d1:
         actual_attendance  = st.number_input("Actual attendance",        min_value=0, value=0, step=50)
@@ -73,8 +74,7 @@ with st.form("post_event_form"):
             ["accurate", "over-deployed", "under-deployed"],
         )
 
-    st.markdown("---")
-    st.markdown("### Actual Outcomes")
+    section_header("Actual Outcomes")
     o1, o2 = st.columns(2)
     with o1:
         actual_congestion = st.selectbox(
@@ -91,8 +91,7 @@ with st.form("post_event_form"):
             "Public safety outcome (1 = poor, 5 = excellent)", 1, 5, 3
         )
 
-    st.markdown("---")
-    st.markdown("### Officer Observations")
+    section_header("Officer Observations")
     challenges      = st.text_area("Operational challenges faced", value="", height=100)
     recommendations = st.text_area("Recommendations for next time", value="", height=100)
 
@@ -136,8 +135,7 @@ if submitted:
 if REPORT_FILE.exists():
     past = pd.read_csv(REPORT_FILE)
     if not past.empty:
-        st.markdown("---")
-        st.markdown(f"### Report History ({len(past)} reports)")
+        section_header(f"Report History ({len(past)} reports)")
 
         # Prediction vs actual comparison for severity predictions
         sev_map = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
