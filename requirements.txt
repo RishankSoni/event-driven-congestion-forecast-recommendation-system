@@ -9,3 +9,4 @@ lightgbm>=4.0.0
 osmnx>=2.0.0
 streamlit-calendar>=0.6.0
 geopy>=2.4.0
+shap
