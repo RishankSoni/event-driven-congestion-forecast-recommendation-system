@@ -32,7 +32,7 @@ def load_and_train() -> dict:
     df = load_raw()
     df["window_count"] = compute_window_counts(df)
 
-    train_df, val_df, test_df = split_data(df)
+    train_df, val_df, test_df = split_data(df, stratify_col="event_cause")
 
     baselines = compute_corridor_baselines(train_df)
     for split in [train_df, val_df, test_df]:

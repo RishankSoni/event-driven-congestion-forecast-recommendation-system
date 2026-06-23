@@ -48,6 +48,7 @@ def load_raw(path=DATA_PATH) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], utc=True, errors="coerce")
     df = df.dropna(subset=["start_datetime", "corridor"])
+    df = df[df["corridor"] != "Non-corridor"]
     df["hour_of_day"] = df["start_datetime"].dt.hour.astype(int)
     df["day_of_week"] = df["start_datetime"].dt.dayofweek.astype(int)
     df["hour_band"]   = df["hour_of_day"].apply(_hour_to_band)
@@ -104,22 +105,64 @@ def load_raw(path=DATA_PATH) -> pd.DataFrame:
 
     return df.reset_index(drop=True)
 
-def split_data(df: pd.DataFrame, train_frac=0.70, val_frac=0.15, random_state=42):
-    """Returns (train_df, val_df, test_df). 70/15/15 random split."""
+def split_data(
+    df: pd.DataFrame,
+    train_frac=0.70,
+    val_frac=0.15,
+    random_state=42,
+    stratify_col: str | None = None,
+):
+    """Returns (train_df, val_df, test_df). 70/15/15 split.
+    Pass stratify_col to stratify both splits by that column's values."""
     test_size = 1.0 - train_frac - val_frac          # 0.15
     val_size  = val_frac / (train_frac + val_frac)    # 0.15 / 0.85 ≈ 0.1765
 
-    train_val, test = train_test_split(df, test_size=test_size, random_state=random_state)
-    train, val      = train_test_split(train_val, test_size=val_size, random_state=random_state)
+    def _make_stratify(frame: pd.DataFrame) -> pd.Series | None:
+        """Return a stratify series, grouping rare classes (< 2 members) into
+        '__rare__' so sklearn's minimum-per-class requirement is always met.
+        Returns None when stratify_col is not set."""
+        if not stratify_col:
+            return None
+        s = frame[stratify_col].copy()
+        counts = s.value_counts()
+        rare = counts[counts < 2].index
+        if len(rare):
+            s = s.where(~s.isin(rare), other="__rare__")
+        return s
+
+    strat_tv = _make_stratify(df)
+    try:
+        train_val, test = train_test_split(
+            df, test_size=test_size, random_state=random_state, stratify=strat_tv
+        )
+    except ValueError:
+        train_val, test = train_test_split(
+            df, test_size=test_size, random_state=random_state
+        )
+
+    strat_t = _make_stratify(train_val)
+    try:
+        train, val = train_test_split(
+            train_val, test_size=val_size, random_state=random_state, stratify=strat_t
+        )
+    except ValueError:
+        train, val = train_test_split(
+            train_val, test_size=val_size, random_state=random_state
+        )
     return train.copy(), val.copy(), test.copy()
 
+
 def corridor_metadata(df: pd.DataFrame, corridor: str) -> tuple:
-    """Returns (zone, police_station, mean_lat, mean_lng) for a corridor."""
+    """Returns (zone, police_station, mean_lat, mean_lng) for a corridor.
+    Excludes rows where zone/police_station=='unknown' before computing mode
+    so that a minority of properly-labelled rows wins over null-filled rows."""
     sub = df[df["corridor"] == corridor]
     if sub.empty:
         return ("unknown", "unknown", 12.97, 77.59)
-    zone   = sub["zone"].mode().iloc[0]
-    police = sub["police_station"].mode().iloc[0]
+    named_zone = sub[sub["zone"] != "unknown"]
+    zone = named_zone["zone"].mode().iloc[0] if not named_zone.empty else "unknown"
+    named_police = sub[sub["police_station"] != "unknown"]
+    police = named_police["police_station"].mode().iloc[0] if not named_police.empty else "unknown"
     lat    = sub["latitude"].mean()
     lng    = sub["longitude"].mean()
     return zone, police, lat, lng
