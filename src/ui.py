@@ -618,17 +618,6 @@ def page_header(title: str, subtitle: str = "") -> None:
         )
 
 
-def sidebar_metrics(state: dict) -> None:
-    st.sidebar.markdown(
-        '<div class="section-header" style="margin-top:4px">Model Performance</div>',
-        unsafe_allow_html=True,
-    )
-    st.sidebar.metric("CV macro-F1 (train)", f"{state['cv_f1']:.3f}")
-    st.sidebar.metric("Test macro-F1",       f"{state['test_f1']:.3f}")
-    st.sidebar.metric("Congestion AUC",      f"{state['risk_models']['congestion_auc']:.3f}")
-    st.sidebar.metric("Law & Order AUC",     f"{state['risk_models']['law_order_auc']:.3f}")
-    st.sidebar.caption("Baseline (majority class): ~0.22 on 3-class problem")
-
 
 def ai_insight_card(text: str) -> None:
     """Render an AI-insight styled blue-bordered card."""
