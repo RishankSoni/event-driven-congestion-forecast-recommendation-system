@@ -2,7 +2,7 @@
 
 **GRIDLOCK 2.0 — Theme 2 Hackathon Demo**
 
-Predicts traffic impact severity for upcoming events and auto-generates a concrete deployment plan — before the event happens. Built on historical GRIDLOCK Bengaluru incident data.
+Predicts traffic impact severity for upcoming events and auto-generates a concrete deployment plan — before the event happens. Built on historical GRIDLOCK Bengaluru incident data, now enriched with live weather, MapmyIndia (Mappls) custom maps, and Mappls Workmate workforce automation.
 
 ---
 
@@ -12,47 +12,13 @@ Given an upcoming event (type, location, date/time), the system:
 
 1. **Forecasts severity** — LOW / MEDIUM / HIGH — using a Gradient Boosted classifier trained on historical incident patterns
 2. **Generates a deployment plan** — officer count, barricade positions, and diversion routes
-3. **Shows a live map** — impact zone, officer pins, barricade markers, diversion polylines
-4. **Surfaces evidence** — 5 most similar past events with their actual outcomes
+3. **Renders Interactive Maps** — supports OpenStreetMap (Default) and premium MapmyIndia (Mappls) tiles, displaying the event impact zone, barricades, diversion routes, and live/simulated Workmate officer tracking pins
+4. **Dispatches Tasks to Workmate** — publishes patrol tasks and barricade instructions directly to the Mappls Workmate system
+5. **Surfaces evidence** — 5 most similar past events with their actual outcomes
 
 ---
 
-## Architecture
-
-```
-Layer 1 — Data Pipeline     load_raw() → split_data() → feature engineering
-Layer 2 — ML Impact Scorer  excess-above-baseline target → GBT classifier → KNN evidence
-Layer 3 — Recommendation    officer counts · barricade positions · diversion graph
-Layer 4 — Streamlit UI      event input form → split-pane results dashboard + Folium map
-```
-
-### Impact Score (the ML target)
-
-```
-window_count(e)  = incidents on same corridor within [t−1h, t+1.5h]
-baseline(c, t)   = mean window_count for corridor c, same hour-band, same day-of-week
-impact_score(e)  = window_count(e) − baseline(c, t)
-```
-
-This isolates the event's causal contribution, removing the corridor's normal activity level. Tertile thresholds (LOW / MEDIUM / HIGH cut-points) are computed on the **training split only** to prevent leakage.
-
-### Data Splits
-
-| Split | Size | Purpose |
-|---|---|---|
-| Train | 70% | Fit model, compute baselines, compute tertile thresholds |
-| Validation | 15% | Hyperparameter tuning, window sweep |
-| Test | 15% | Final macro-F1 — reported once, never touched during development |
-
-### Model Validation
-
-- Window sweep over {1h, 1.5h, 2h, 2.5h} post-windows → **1.5h wins** (CV macro-F1 = 0.637)
-- Majority-class baseline macro-F1 ≈ 0.22
-- Minimum bar: test macro-F1 ≥ 0.50 ✅
-
----
-
-## Setup
+## Setup & Credentials
 
 **Prerequisites:** Python 3.10+
 
@@ -64,6 +30,27 @@ pip install -r requirements.txt
 ```
 data/events.csv   ← Astram event data_anonymized.csv
 ```
+
+### MapmyIndia (Mappls) Credentials Configuration
+
+To enable MapmyIndia (Mappls) maps, geocoding search, and Workmate workforce management, you must provide your developer keys. You can do this in three ways:
+
+1. **Streamlit Secrets (Recommended)**: Create or edit `.streamlit/secrets.toml` with:
+   ```toml
+   [mappls]
+   client_id = "YOUR_MAPPLS_CLIENT_ID"
+   client_secret = "YOUR_MAPPLS_CLIENT_SECRET"
+   rest_key = "YOUR_MAPPLS_REST_KEY"
+   ```
+2. **Environment Variables**: Export variables in your terminal shell:
+   ```bash
+   export MAPPLS_CLIENT_ID="your_client_id"
+   export MAPPLS_CLIENT_SECRET="your_client_secret"
+   export MAPPLS_REST_KEY="your_rest_key"
+   ```
+3. **UI Sidebar**: Paste them directly on-the-fly under the **MapmyIndia (Mappls)** sidebar settings panel.
+
+*Note: If credentials are not configured or are invalid, the app runs in **Simulation Mode** (fully functional mock data, simulated officers, and simulated task dispatches) so you can still test all features.*
 
 ---
 
@@ -77,39 +64,52 @@ Opens at `http://localhost:8501`. First load trains the model (~30–60s, cached
 
 ---
 
+## Mappls & Workmate Integration Architecture
+
+### 1. Visual Tile Rendering
+When **Enable Mappls Map Tiles** is active and your REST API Key is configured, the application dynamically swaps out OpenStreetMap and renders Leaflet maps overlayed with MapmyIndia's premium vector still maps using:
+`https://apis.mappls.com/advancedmaps/v1/{rest_key}/still_map/{z}/{x}/{y}.png`
+
+### 2. Search Geocoding Cascade
+When **Enable Mappls Geocoding** is active, the Station Registry geocoder queries the Mappls search address endpoint:
+`https://search.mappls.com/search/address/geocode`
+If Mappls geocoding fails or is disabled, the system automatically falls back to Nominatim to ensure zero-downtime geocoding of police stations.
+
+### 3. Workmate Task Dispatcher & Tracking
+- **Workforce tracking**: Fetches active field force employees from Mappls Workmate (`GET /users`) and overlays their current pins on the Results impact map.
+- **Action plan publishing**: Integrates a dispatch controller in the results screen that packages the primary corridor patrols and barricade placements as active Workmate tasks (`POST /tasks`) assigned to field officers.
+
+---
+
 ## Demo Flow
 
-1. Open the app — **Event Input** screen loads
-2. Enter: `Public Rally · public_event · ORR North 1 · requires road closure · Monday 18:00`
-3. Click **Predict Impact**
-4. Results screen shows **HIGH** severity badge + confidence %
-5. Risk forecast: congestion bar, law & order bar
-6. Action plan: officer range, barricade list (VeerannapalyaJunction, HoramavuJunction), diversion routes
-7. Map: red impact circle, barricade markers, dashed diversion lines
-8. Click **View Full Deployment Plan →** → Briefing, Timeline, QRT, Medical
-9. Export deployment CSV
-10. Click **💾 Save to Event Calendar**
-11. Open **Command Dashboard** → today's events + conflict detection
-12. Open **Multi-Event Optimizer** → pick 2 events → combined station assignment
+1. Open the app — **Event Input** screen loads.
+2. In the sidebar, expand the **MapmyIndia (Mappls)** panel. Verify that the toggles are active and status shows connected.
+3. Enter event details: `Public Rally · public_event · ORR North 1 · requires road closure · Monday 18:00`.
+4. Click **Predict Impact**.
+5. Results screen shows **HIGH** severity badge + confidence %.
+6. Map shows MapmyIndia tile layer, barricade placements, diversions, and active patrol officer user pins.
+7. Under the map, review the **Workmate Dispatch** dashboard and click **Dispatch Tasks to Workmate** to publish assignments to your field force.
+8. Click **View Full Deployment Plan** to download timeline spreadsheets and review resource summaries.
 
 ---
 
 ## Tests
 
+Run the full project test suite:
 ```bash
 pytest tests/ -v
 ```
 
-28 tests across 6 files:
+Or run only the MapmyIndia Mappls integrations test suite:
+```bash
+pytest tests/test_mappls.py -v
+```
 
-| File | Tests |
-|---|---|
-| `tests/test_pipeline.py` | 6 — data loading, splits, feature extraction |
-| `tests/test_baseline.py` | 7 — window counts, excess scores, severity labels |
-| `tests/test_model.py` | 5 — training, prediction, CV, KNN |
-| `tests/test_recommender.py` | 6 — officer counts, barricades, diversion graph |
-| `tests/test_map_builder.py` | 2 — Folium map construction |
-| `tests/test_integration.py` | 2 — end-to-end CBD 2 scenario, test F1 assertion |
+Our test suite includes verification of:
+* **Token Caching**: OAuth access tokens are cached in-memory and only requested when expired.
+* **Geocoding Strategies**: Verifies Mappls search endpoints are queried first and fall back correctly.
+* **Simulation Modes**: Ensures mock officers and mock tasks are safely generated if live credentials are not set.
 
 ---
 
@@ -122,8 +122,9 @@ src/
   baseline.py             window counts, excess scores, severity labeling
   model.py                GBT classifier, CV/test evaluation, KNN evidence
   recommender.py          officer counts, barricades, diversion graph
-  map_builder.py          Folium map with impact zone + markers
-  window_sweep.py         one-off script that validated the 1.5h post-window
+  map_builder.py          Folium map with impact zone + markers + Mappls layer
+  mappls_api.py           OAuth token generation, search geocoding, Workmate API client
+  ui.py                   Streamlit UI styles, KPI cards, and Mappls configuration sidebar
 tests/
   conftest.py             shared sample_df fixture
   test_pipeline.py
@@ -132,8 +133,10 @@ tests/
   test_recommender.py
   test_map_builder.py
   test_integration.py
+  test_mappls.py          Unit tests for MapmyIndia and Workmate features
 data/
   events.csv              GRIDLOCK Bengaluru incident data (not committed)
+  bengaluru_drive.graphml GraphML topology of road network for routing
 ```
 
 ---
@@ -149,3 +152,6 @@ data/
 | pandas | ≥2.1 | Data pipeline |
 | numpy | ≥1.26 | Numerical operations |
 | pytest | ≥8.0 | Test suite |
+| requests | ≥2.31 | Mappls REST API requests |
+| toml | ≥0.10 | Read secrets configuration |
+| geopy | ≥2.4 | Nominatim geocoding fallback |
