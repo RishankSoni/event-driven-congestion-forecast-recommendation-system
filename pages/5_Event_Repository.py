@@ -8,13 +8,15 @@ import streamlit as st
 from src import event_store
 from src.app_cache import load_and_train
 from src.explainer import explain_severity
+from src.ui import inject_css, page_header
 
 st.set_page_config(page_title="Event Repository", layout="wide")
-st.title("Event Repository")
+inject_css()
+page_header("Event Repository", subtitle="Search and manage all saved events.")
 
 # ── Sidebar filters ───────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### Filters")
+    st.markdown('<div class="section-header" style="margin-top:4px">Filters</div>', unsafe_allow_html=True)
     today = date.today()
     date_range = st.date_input(
         "Date range",
@@ -140,7 +142,6 @@ if sel_rows:
                 st.markdown(f"{arrow} **{d['direction']}{d['pct']}%** &nbsp; {d['display']}")
 
         # Status actions
-        st.markdown("---")
         sa, sb, sc = st.columns(3)
         if ev["status"] == "planned" and sa.button("Mark Active", key="repo_active"):
             event_store.update_status(ev["event_id"], "active")

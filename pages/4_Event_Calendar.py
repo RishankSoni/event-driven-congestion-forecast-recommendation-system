@@ -8,9 +8,11 @@ from streamlit_calendar import calendar as st_calendar
 from src import event_store
 from src.app_cache import load_and_train
 from src.explainer import explain_severity
+from src.ui import inject_css, page_header, section_header
 
 st.set_page_config(page_title="Event Calendar", layout="wide")
-st.title("Event Calendar")
+inject_css()
+page_header("Event Calendar", subtitle="Saved events by date — click an event to view details.")
 
 _SEVERITY_COLOR = {
     "HIGH":   "#dc3545",
@@ -60,8 +62,7 @@ if cal_result and cal_result.get("eventClick"):
     clicked_id = cal_result["eventClick"]["event"]["id"]
     ev = event_store.get_event(clicked_id)
     if ev:
-        st.markdown("---")
-        st.subheader(ev["event_name"])
+        section_header(ev["event_name"])
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Severity",  ev.get("severity") or "—")
         c2.metric("Corridor",  ev.get("corridor") or "—")
@@ -111,7 +112,6 @@ if cal_result and cal_result.get("eventClick"):
                 st.markdown(f"{arrow} **{d['direction']}{d['pct']}%** &nbsp; {d['display']}")
 
         # Status actions
-        st.markdown("---")
         sa, sb, sc = st.columns(3)
         if ev["status"] == "planned" and sa.button("Mark Active"):
             event_store.update_status(clicked_id, "active")
