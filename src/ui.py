@@ -75,10 +75,10 @@ def inject_css() -> None:
        Results and Post-Event-Report are accessed via
        st.switch_page only — not via the sidebar.
     ══════════════════════════════════════════════════ */
-    [data-testid="stSidebarNavLink"][href="/results"],
-    [data-testid="stSidebarNavLink"][href="/post-event-report"],
-    li:has([data-testid="stSidebarNavLink"][href="/results"]),
-    li:has([data-testid="stSidebarNavLink"][href="/post-event-report"]) {
+    [data-testid="stSidebarNavLink"][href$="/results"],
+    [data-testid="stSidebarNavLink"][href$="/post-event-report"],
+    li:has([data-testid="stSidebarNavLink"][href$="/results"]),
+    li:has([data-testid="stSidebarNavLink"][href$="/post-event-report"]) {
         display: none !important;
     }
 
