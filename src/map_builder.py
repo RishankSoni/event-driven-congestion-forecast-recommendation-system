@@ -4,8 +4,10 @@ from collections import deque
 import folium  # type: ignore[import]
 import networkx as nx
 import pandas as pd
+import streamlit as st
 
 import src.road_network as road_network
+import src.mappls_api as mappls_api
 
 _SEVERITY_COLOR  = {"LOW": "green", "MEDIUM": "orange", "HIGH": "red"}
 _SEVERITY_RADIUS = {"LOW": 500,     "MEDIUM": 1000,     "HIGH": 2000}
@@ -71,8 +73,60 @@ def build_map(
     color  = _SEVERITY_COLOR[severity]
     radius = _SEVERITY_RADIUS[severity]
 
-    m = folium.Map(location=[event_lat, event_lng], zoom_start=14)
+    # MapmyIndia Mappls Custom Map Tiles Integration
+    try:
+        mappls_tiles = st.session_state.get("mappls_tiles_enabled", False)
+    except Exception:
+        mappls_tiles = False
+    creds = mappls_api.get_credentials()
+    rest_key = creds.get("rest_key")
+
+    if mappls_tiles and rest_key:
+        m = folium.Map(location=[event_lat, event_lng], zoom_start=14, tiles=None)
+        tile_url = f"https://apis.mappls.com/advancedmaps/v1/{rest_key}/still_map/{{z}}/{{x}}/{{y}}.png"
+        folium.TileLayer(
+            tiles=tile_url,
+            attr="© Mappls MapmyIndia",
+            name="Mappls MapmyIndia",
+            overlay=False,
+            control=False
+        ).add_to(m)
+    else:
+        m = folium.Map(location=[event_lat, event_lng], zoom_start=14)
+
     all_coords = [[event_lat, event_lng]]
+
+    # Workmate live/simulated officer tracking integration
+    try:
+        workmate_enabled = st.session_state.get("mappls_workmate_enabled", False)
+    except Exception:
+        workmate_enabled = False
+
+    if workmate_enabled:
+        try:
+            officers_list = mappls_api.fetch_workmate_users(event_lat, event_lng)
+            for officer in officers_list:
+                if officer.get("latitude") is not None and officer.get("longitude") is not None:
+                    popup_content = (
+                        f"<b>{officer['name']}</b><br>"
+                        f"Phone: {officer['phone']}<br>"
+                        f"Battery: {officer['battery']}%"
+                    )
+                    if officer.get("simulated"):
+                        popup_content += "<br><i>(Simulated Position)</i>"
+                        icon_color = "cadetblue"
+                    else:
+                        icon_color = "darkblue"
+                    
+                    folium.Marker(
+                        location=[officer["latitude"], officer["longitude"]],
+                        popup=folium.Popup(popup_content, max_width=200),
+                        tooltip=officer["name"],
+                        icon=folium.Icon(color=icon_color, icon="user"),
+                    ).add_to(m)
+                    all_coords.append([officer["latitude"], officer["longitude"]])
+        except Exception as e:
+            logger.warning(f"Error drawing Workmate officer markers: {e}")
 
     # Impact zone
     folium.Circle(
@@ -83,6 +137,7 @@ def build_map(
         fill_opacity=0.15,
         popup=f"{severity} impact zone ({radius}m radius)",
     ).add_to(m)
+
 
     # Event epicenter marker
     folium.Marker(

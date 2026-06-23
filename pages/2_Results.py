@@ -8,7 +8,9 @@ from streamlit_folium import st_folium
 from src import event_store, station_store
 from src.app_cache import load_and_train
 from src.deployment_planner import build_deployment_plan
-from src.ui import inject_css, page_header, section_header, severity_badge, risk_gauge, ai_insight_card
+from src.ui import inject_css, page_header, section_header, severity_badge, risk_gauge, ai_insight_card, render_mappls_sidebar
+import src.mappls_api as mappls_api
+
 
 
 def _build_save_record(sd: dict, r: dict) -> dict:
@@ -31,6 +33,7 @@ def _build_save_record(sd: dict, r: dict) -> dict:
 
 st.set_page_config(page_title="Event Congestion Planner — Results", layout="wide")
 inject_css()
+render_mappls_sidebar()
 
 state = load_and_train()   # hits the cache; no re-training
 
@@ -81,6 +84,25 @@ if "save_data" in st.session_state:
         "stations": _ranked,
         "plan":     _plan,
     }
+
+# Rebuild map dynamically to reflect Mappls Tiles / Workmate settings updates
+from src.map_builder import build_map
+from src.app_cache import get_road_graph
+
+graph = get_road_graph()
+sd = st.session_state.get("save_data", {})
+lat = sd.get("latitude", 12.97)
+lng = sd.get("longitude", 77.59)
+_all_stations = station_store.get_all_stations()
+_ranked_map = _ranked if "_ranked" in locals() else station_store.rank_stations(lat, lng, top_n=5)
+
+fmap = build_map(
+    lat, lng, severity, barricades, diversions,
+    officers, state["train_df"], r["event_name"], graph, corridor=r["corridor"],
+    stations=_all_stations,
+    ranked_stations=_ranked_map,
+)
+
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -226,6 +248,70 @@ with left:
 with right:
     section_header("Impact Map")
     st_folium(fmap, width=700, height=520, returned_objects=[])
+
+    # ── Workmate Task Dispatch ───────────────────────────────────────────────
+    workmate_active = st.session_state.get("mappls_workmate_enabled", False)
+    if workmate_active:
+        section_header("Workmate Dispatch")
+        st.markdown(
+            "Dispatch deployment tasks directly to officers via MapmyIndia Workmate."
+        )
+        
+        # Dispatch Status in session state
+        if "workmate_dispatch_result" not in st.session_state:
+            st.session_state["workmate_dispatch_result"] = None
+            
+        btn_label = "📤 Dispatch Tasks to Workmate"
+        if st.session_state["workmate_dispatch_result"]:
+            btn_label = "📤 Re-dispatch Tasks"
+            
+        if st.button(btn_label, type="primary"):
+            with st.spinner("Dispatching tasks..."):
+                tasks_created = []
+                sd = st.session_state.get("save_data", {})
+                
+                # Create primary corridor deployment task
+                task_desc = (
+                    f"Deploy {officers['primary_min']}-{officers['primary_max']} officers "
+                    f"on primary corridor: {r['corridor']}. "
+                    f"Event: {r['event_name']} ({severity} severity)."
+                )
+                res1 = mappls_api.dispatch_workmate_task(
+                    task_name=f"Patrol Corridor: {r['corridor']}",
+                    description=task_desc,
+                    due_date_str=f"{sd.get('event_date')} {sd.get('event_time')}:00"
+                )
+                tasks_created.append(res1)
+                
+                # Create barricade tasks
+                for idx, bar in enumerate(barricades):
+                    res = mappls_api.dispatch_workmate_task(
+                        task_name=f"Setup Barricade: {bar}",
+                        description=f"Establish traffic barricade at junction: {bar}. Event: {r['event_name']}.",
+                        due_date_str=f"{sd.get('event_date')} {sd.get('event_time')}:00"
+                    )
+                    tasks_created.append(res)
+                    
+                st.session_state["workmate_dispatch_result"] = tasks_created
+                
+        # Show results
+        dispatch_res = st.session_state["workmate_dispatch_result"]
+        if dispatch_res:
+            all_sim = all(t.get("mode") == "simulation" for t in dispatch_res)
+            if all_sim:
+                st.info(
+                    "💡 **Simulation Mode**: Tasks were dispatched to mock officers. "
+                    "Configure Client ID & Client Secret in the sidebar for live integration."
+                )
+            else:
+                st.success("🟢 Dispatched: Tasks successfully published to Mappls Workmate!")
+                
+            for t in dispatch_res:
+                st.markdown(
+                    f"- `{t.get('task_id')[:12]}`: {t.get('message')} "
+                    f"({t.get('mode').upper()})"
+                )
+
 
 # ── Export ────────────────────────────────────────────────────────────────────
 section_header("Export")

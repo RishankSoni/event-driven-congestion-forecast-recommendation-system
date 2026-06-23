@@ -1,15 +1,18 @@
 # pages/6_Station_Registry.py
 import pandas as pd
 import streamlit as st
-from streamlit_folium import st_folium
 import folium
-
+from streamlit_folium import st_folium
+from src.ui import inject_css, page_header, render_mappls_sidebar
 from src import station_store
 from src.app_cache import load_and_train
-from src.ui import inject_css, page_header
+import src.mappls_api as mappls_api
+
 
 st.set_page_config(page_title="Station Registry", layout="wide")
 inject_css()
+render_mappls_sidebar()
+
 page_header("Station Registry", subtitle="Manage police station capacities and geocoding.")
 
 load_and_train()  # ensures init_station_db() has been called
@@ -25,7 +28,22 @@ with tab_map:
         "zone_centroid_fallback": "#fd7e14",
         "pending":                "#FF4444",
     }
-    m = folium.Map(location=[12.97, 77.59], zoom_start=11)
+    mappls_tiles = st.session_state.get("mappls_tiles_enabled", False)
+    creds = mappls_api.get_credentials()
+    rest_key = creds.get("rest_key")
+    if mappls_tiles and rest_key:
+        m = folium.Map(location=[12.97, 77.59], zoom_start=11, tiles=None)
+        tile_url = f"https://apis.mappls.com/advancedmaps/v1/{rest_key}/still_map/{{z}}/{{x}}/{{y}}.png"
+        folium.TileLayer(
+            tiles=tile_url,
+            attr="© Mappls MapmyIndia",
+            name="Mappls MapmyIndia",
+            overlay=False,
+            control=False
+        ).add_to(m)
+    else:
+        m = folium.Map(location=[12.97, 77.59], zoom_start=11)
+
     for s in stations:
         if s["latitude"] is None:
             continue
