@@ -8,7 +8,7 @@ from streamlit_folium import st_folium
 from src import event_store, station_store
 from src.app_cache import load_and_train
 from src.deployment_planner import build_deployment_plan
-from src.ui import inject_css, page_header, section_header, sidebar_metrics, severity_badge, risk_gauge, ai_insight_card
+from src.ui import inject_css, page_header, section_header, severity_badge, risk_gauge, ai_insight_card
 
 
 def _build_save_record(sd: dict, r: dict) -> dict:
@@ -83,7 +83,7 @@ if "save_data" in st.session_state:
     }
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
-sidebar_metrics(state)
+
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.page_link("pages/1_Plan_Event.py", label="← Back to form")
