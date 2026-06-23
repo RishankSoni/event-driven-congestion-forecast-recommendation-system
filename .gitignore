@@ -11,3 +11,4 @@ venv/
 env/
 .streamlit/secrets.toml
 data/events.db
+data/bengaluru_drive_backup.graphml
