@@ -25,6 +25,10 @@ def _safe_df(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = 0
     if "veh_type" not in df.columns:
         df["veh_type"] = "unknown"
+    if "rain_mm" not in df.columns:
+        df["rain_mm"] = 0.0
+    if "temperature_c" not in df.columns:
+        df["temperature_c"] = 25.0
     for col in CAT_COLS:
         if col not in df.columns:
             df[col] = "unknown"

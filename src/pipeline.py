@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
-DATA_PATH = Path(__file__).parent.parent / "data" / "events.csv"
+DATA_PATH = Path(__file__).parent.parent / "data" / "events_enriched.csv"
 
 _HIGH_CAUSE = {"accident", "water_logging", "procession", "vip_movement", "protest"}
 
@@ -44,7 +44,7 @@ def _hour_to_band(hour: int) -> str:
 
 def load_raw(path=DATA_PATH) -> pd.DataFrame:
     df = pd.read_csv(path, low_memory=False)
-    for col in ["start_datetime", "closed_datetime", "end_datetime"]:
+    for col in ["start_datetime", "closed_datetime", "end_datetime", "modified_datetime"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], utc=True, errors="coerce")
     df = df.dropna(subset=["start_datetime", "corridor"])
@@ -62,9 +62,17 @@ def load_raw(path=DATA_PATH) -> pd.DataFrame:
         .astype(bool)
         .astype(object)
     )
-    df["duration_h"] = (
-        df["closed_datetime"] - df["start_datetime"]
-    ).dt.total_seconds() / 3600
+    end_col = "closed_datetime" if "closed_datetime" in df.columns else ("modified_datetime" if "modified_datetime" in df.columns else "end_datetime")
+    if end_col in df.columns:
+        df["duration_h"] = (
+            df[end_col] - df["start_datetime"]
+        ).dt.total_seconds() / 3600
+        if "closed_datetime" not in df.columns:
+            df["closed_datetime"] = df[end_col]
+    else:
+        import numpy as np
+        df["duration_h"] = np.nan
+        df["closed_datetime"] = pd.NaT
     df["duration_h"] = df["duration_h"].where(
         (df["duration_h"] > 0) & (df["duration_h"] <= 24)
     )
