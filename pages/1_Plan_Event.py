@@ -13,8 +13,10 @@ from src.model import get_knn_neighbors, predict
 from src.pipeline import corridor_metadata
 from src.recommender import barricade_positions, get_diversions, officer_count
 from src.risk_model import predict_risks
+from src.ui import inject_css, page_header, section_header, sidebar_metrics
 
 st.set_page_config(page_title="Event Congestion Planner", layout="wide")
+inject_css()
 
 state           = load_and_train()
 graph           = get_road_graph()
@@ -25,17 +27,11 @@ diversion_graph = state["diversion_graph"]
 risk_models     = state["risk_models"]
 explainers      = state["explainers"]
 
-st.sidebar.markdown("### Model Performance")
-st.sidebar.metric("CV macro-F1 (train)", f"{state['cv_f1']:.3f}")
-st.sidebar.metric("Test macro-F1",       f"{state['test_f1']:.3f}")
-st.sidebar.metric("Congestion AUC",      f"{state['risk_models']['congestion_auc']:.3f}")
-st.sidebar.metric("Law & Order AUC",     f"{state['risk_models']['law_order_auc']:.3f}")
-st.sidebar.caption("Baseline (majority class): ~0.22 on 3-class problem")
+sidebar_metrics(state)
 
-st.title("Event Congestion Planner")
-st.markdown(
-    "Enter details of an upcoming event to forecast traffic impact "
-    "and generate a deployment plan."
+page_header(
+    "Event Congestion Planner",
+    subtitle="Enter details of an upcoming event to forecast traffic impact and generate a deployment plan.",
 )
 
 corridors    = sorted(train_df["corridor"].dropna().unique().tolist())
@@ -92,7 +88,7 @@ with st.form("event_form"):
     auto_idx = holiday_options.index(auto_cal["holiday_type"]) \
         if auto_cal["holiday_type"] in holiday_options else 0
 
-    st.markdown("**Calendar context**")
+    section_header("Calendar Context")
     cc1, cc2 = st.columns([2, 1])
     with cc1:
         holiday_type_sel = st.selectbox(
@@ -113,8 +109,7 @@ with st.form("event_form"):
     has_vip       = 0
 
     if is_planned:
-        st.markdown("---")
-        st.markdown("**Planned event details**")
+        section_header("Planned Event Details")
         p1, p2 = st.columns(2)
         with p1:
             estimated_attendance = st.number_input(
@@ -134,8 +129,7 @@ with st.form("event_form"):
 
     # ── Unplanned-only fields ────────────────────────────────────────────────
     if not is_planned:
-        st.markdown("---")
-        st.markdown("**Incident details**")
+        section_header("Incident Details")
         u1, u2 = st.columns(2)
         with u1:
             st.selectbox("Incident type", [
