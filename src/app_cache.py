@@ -19,8 +19,34 @@ from src.road_network import load_graph
 
 
 @st.cache_resource(show_spinner="Loading road network...")
-def get_road_graph() -> nx.MultiDiGraph:
-    return load_graph(Path("data/bengaluru_drive.graphml"))
+def get_road_graph() -> nx.MultiDiGraph | None:
+    # Try pickle first (faster load time & lower memory footprint)
+    pickle_path = Path("data/bengaluru_drive.pickle")
+    if pickle_path.exists():
+        try:
+            import pickle
+            with open(pickle_path, "rb") as f:
+                return pickle.load(f)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to load pickled road graph: {e}")
+
+    graphml_path = Path("data/bengaluru_drive.graphml")
+    try:
+        G = load_graph(graphml_path)
+        if G is not None:
+            return G
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to load GraphML road graph: {e}")
+        
+    try:
+        st.warning("⚠️ Road network graph not loaded. Map routing and snapping will use straight-line fallbacks.")
+    except Exception:
+        pass
+    return None
 
 
 @st.cache_data(show_spinner="Loading data and training models...")

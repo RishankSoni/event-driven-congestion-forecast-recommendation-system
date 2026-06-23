@@ -31,26 +31,31 @@ def _corridor_centroid(df: pd.DataFrame, corridor: str):
     return (float(sub["latitude"].mean()), float(sub["longitude"].mean()))
 
 
-def _snap_to_intersection(G: nx.MultiDiGraph, lat: float, lng: float) -> tuple:
+def _snap_to_intersection(G: nx.MultiDiGraph | None, lat: float, lng: float) -> tuple:
     """Snap a lat/lng to the nearest road intersection (node degree >= 3) via BFS.
 
     Walks outward from the nearest node up to 3 hops until a true junction is found.
     Falls back to the original nearest node if no degree-3 node is reachable.
     """
-    node_id = road_network.nearest_node(G, lat, lng)
-    visited = {node_id}
-    queue = deque([(node_id, 0)])
-    while queue:
-        nid, depth = queue.popleft()
-        if G.degree(nid) >= 3:
-            return (float(G.nodes[nid]["y"]), float(G.nodes[nid]["x"]))
-        if depth < 3:
-            neighbors = set(G.successors(nid)) | set(G.predecessors(nid))
-            for neighbor in neighbors:
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append((neighbor, depth + 1))
-    return (float(G.nodes[node_id]["y"]), float(G.nodes[node_id]["x"]))
+    if G is None:
+        return (lat, lng)
+    try:
+        node_id = road_network.nearest_node(G, lat, lng)
+        visited = {node_id}
+        queue = deque([(node_id, 0)])
+        while queue:
+            nid, depth = queue.popleft()
+            if G.degree(nid) >= 3:
+                return (float(G.nodes[nid]["y"]), float(G.nodes[nid]["x"]))
+            if depth < 3:
+                neighbors = set(G.successors(nid)) | set(G.predecessors(nid))
+                for neighbor in neighbors:
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        queue.append((neighbor, depth + 1))
+        return (float(G.nodes[node_id]["y"]), float(G.nodes[node_id]["x"]))
+    except Exception:
+        return (lat, lng)
 
 
 _DIVERSION_COLORS = ["blue", "cadetblue"]
@@ -65,7 +70,7 @@ def build_map(
     officer_info: dict,
     train_df: pd.DataFrame,
     event_name: str,
-    G: nx.MultiDiGraph,
+    G: nx.MultiDiGraph | None,
     corridor: str = "",
     stations: list | None = None,
     ranked_stations: list | None = None,
@@ -163,7 +168,7 @@ def build_map(
         all_coords.append(list(coords))
 
     # Diversion routes — road-following alternatives computed by iterative Dijkstra
-    if corridor:
+    if corridor and G is not None:
         diversion_paths = road_network.compute_diversions(G, train_df, corridor)
         for i, path in enumerate(diversion_paths):
             col = _DIVERSION_COLORS[i % len(_DIVERSION_COLORS)]
@@ -184,7 +189,7 @@ def build_map(
                 ).add_to(m)
             all_coords.extend(path)
     else:
-        # Fallback for legacy callers without corridor arg
+        # Fallback when graph is None or legacy callers: draw diversion corridors as lines
         for div_corridor in diversion_corridors:
             try:
                 path = road_network.corridor_route_coords(G, train_df, div_corridor)

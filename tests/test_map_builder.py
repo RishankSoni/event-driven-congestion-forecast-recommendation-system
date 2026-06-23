@@ -50,3 +50,21 @@ def test_build_map_has_polyline_for_diversion(sample_df, bengaluru_graph):
     children = list(m._children.values())
     has_polyline = any(isinstance(c, folium.PolyLine) for c in children)
     assert has_polyline, "Expected a PolyLine for the diversion route"
+
+
+def test_build_map_fallback_when_graph_none(sample_df):
+    m = build_map(
+        event_lat=12.97,
+        event_lng=77.59,
+        severity="MEDIUM",
+        barricade_junctions=["QueensStatueCircle"],
+        diversion_corridors=["ORR East 1"],
+        officer_info={"total_min": 4, "total_max": 6},
+        train_df=sample_df,
+        event_name="Fallback Test",
+        G=None,
+    )
+    assert isinstance(m, folium.Map)
+    children = list(m._children.values())
+    has_polyline = any(isinstance(c, folium.PolyLine) for c in children)
+    assert has_polyline, "Expected a PolyLine for the diversion fallback route"
