@@ -21,26 +21,31 @@ _COLS = [
 
 st.set_page_config(page_title="Post-Event Report", layout="wide")
 inject_css()
-st.page_link("pages/1_Plan_Event.py", label="← Back to form")
-st.page_link("pages/2_Results.py",    label="← Back to results")
+st.page_link("pages/5_Event_Repository.py", label="← Back to Event Repository")
 page_header("Post-Event Report", subtitle="File an after-action report to improve future predictions.")
 
 # ── Pre-fill from session state if available ─────────────────────────────────
-r     = st.session_state.get("result_data", {})
+r    = st.session_state.get("result_data", {})
+repo = st.session_state.get("repo_prefill_event", {})
 risks = r.get("risks", {}) if r else {}
 
-if r:
+if repo:
+    st.info(
+        f"Pre-filling from Event Repository: **{repo.get('event_name', '')}** "
+        f"on **{repo.get('corridor', '')}** — predicted **{repo.get('severity', '')}**"
+    )
+elif r:
     st.info(
         f"Pre-filling from last prediction: **{r.get('event_name', '')}** "
         f"on **{r.get('corridor', '')}** — predicted **{r.get('severity', '')}**"
     )
 
-prefill_name     = r.get("event_name", "")      if r else ""
-prefill_corridor = r.get("corridor", "")        if r else ""
-prefill_severity = r.get("severity", "N/A")     if r else "N/A"
-pred_cong_prob   = risks.get("congestion_prob", "") if risks else ""
-pred_law_prob    = risks.get("law_order_prob",  "") if risks else ""
-pred_duration    = r.get("duration", "")        if r else ""
+prefill_name     = repo.get("event_name")    or (r.get("event_name",    "") if r else "")
+prefill_corridor = repo.get("corridor")      or (r.get("corridor",       "") if r else "")
+prefill_severity = repo.get("severity")      or (r.get("severity",   "N/A") if r else "N/A")
+pred_cong_prob   = (repo.get("congestion_prob") if repo else None) or (risks.get("congestion_prob", "") if risks else "")
+pred_law_prob    = (repo.get("law_order_prob")  if repo else None) or (risks.get("law_order_prob",  "") if risks else "")
+pred_duration    = repo.get("duration_label") or (r.get("duration", "") if r else "")
 
 # ── Report form ───────────────────────────────────────────────────────────────
 with st.form("post_event_form"):

@@ -156,3 +156,17 @@ if sel_rows:
         ):
             event_store.update_status(ev["event_id"], "cancelled")
             st.rerun()
+
+        # Post-Event Report entry point for completed events
+        if ev["status"] == "completed":
+            st.divider()
+            if st.button("📋 File Post-Event Report", key="repo_file_report", type="primary"):
+                st.session_state["repo_prefill_event"] = {
+                    "event_name":      ev["event_name"],
+                    "corridor":        ev.get("corridor", ""),
+                    "severity":        ev.get("severity", "N/A"),
+                    "congestion_prob": ev.get("congestion_prob"),
+                    "law_order_prob":  ev.get("law_order_prob"),
+                    "duration_label":  ev.get("duration_label"),
+                }
+                st.switch_page("pages/3_Post_Event_Report.py")
