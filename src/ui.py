@@ -638,3 +638,89 @@ def kpi_metric(label: str, value, accent: str = "#3B82F6", subtitle: str = "") -
         f'</div>',
         unsafe_allow_html=True,
     )
+
+
+def render_mappls_sidebar() -> None:
+    """Render the MapmyIndia / Mappls integration panel in the sidebar."""
+    import src.mappls_api as mappls_api
+    
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("🗺️ MapmyIndia (Mappls)", expanded=False):
+        st.markdown(
+            "<span style='font-size:0.8rem; color:#94A3B8;'>"
+            "Configure map layers, search APIs, and Workmate workforce management."
+            "</span>", 
+            unsafe_allow_html=True
+        )
+        
+        # Load active configuration
+        creds = mappls_api.get_credentials()
+        
+        # Check if credentials are present to auto-default checkboxes
+        has_rest = bool(creds.get("rest_key"))
+        has_workmate = bool(creds.get("client_id") and creds.get("client_secret"))
+        
+        if "mappls_tiles_enabled" not in st.session_state:
+            st.session_state["mappls_tiles_enabled"] = has_rest
+        if "mappls_geocoding_enabled" not in st.session_state:
+            st.session_state["mappls_geocoding_enabled"] = has_rest
+        if "mappls_workmate_enabled" not in st.session_state:
+            st.session_state["mappls_workmate_enabled"] = has_rest and has_workmate
+
+        # Toggles
+        st.checkbox(
+            "Enable Mappls Map Tiles",
+            value=st.session_state.get("mappls_tiles_enabled"),
+            key="mappls_tiles_enabled"
+        )
+        st.checkbox(
+            "Enable Mappls Geocoding",
+            value=st.session_state.get("mappls_geocoding_enabled"),
+            key="mappls_geocoding_enabled"
+        )
+        st.checkbox(
+            "Enable Workmate Integration",
+            value=st.session_state.get("mappls_workmate_enabled"),
+            key="mappls_workmate_enabled"
+        )
+
+        
+        st.markdown("**Credentials**")
+        client_id = st.text_input(
+            "Client ID",
+            value=creds.get("client_id") or "",
+            type="password",
+            key="mappls_client_id_ui"
+        )
+        client_secret = st.text_input(
+            "Client Secret",
+            value=creds.get("client_secret") or "",
+            type="password",
+            key="mappls_client_secret_ui"
+        )
+        rest_key = st.text_input(
+            "REST API Key",
+            value=creds.get("rest_key") or "",
+            type="password",
+            key="mappls_rest_key_ui"
+        )
+        
+        # Sync back to session state keys consumed by api client
+        st.session_state["mappls_client_id"] = client_id
+        st.session_state["mappls_client_secret"] = client_secret
+        st.session_state["mappls_rest_key"] = rest_key
+        
+        # Status check
+        if rest_key:
+            if client_id and client_secret:
+                # Try getting token
+                token = mappls_api.get_access_token()
+                if token:
+                    st.success("🟢 Mappls & Workmate Connected")
+                else:
+                    st.error("🔴 OAuth Auth Failed (Check ID/Secret)")
+            else:
+                st.warning("🟡 Mappls Tiles/Search active (Workmate disabled)")
+        else:
+            st.info("⚪ Simulation / Fallback Active")
+

@@ -13,11 +13,13 @@ from src.model import get_knn_neighbors, predict
 from src.pipeline import corridor_metadata
 from src.recommender import barricade_positions, get_diversions, officer_count
 from src.risk_model import predict_risks
-from src.ui import inject_css, page_header, section_header
+from src.ui import inject_css, page_header, section_header, render_mappls_sidebar
 from src.weather import get_live_weather
 
 st.set_page_config(page_title="Event Congestion Planner", layout="wide")
 inject_css()
+render_mappls_sidebar()
+
 
 state           = load_and_train()
 graph           = get_road_graph()

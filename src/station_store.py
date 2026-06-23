@@ -66,17 +66,33 @@ def _try_geocode_strategies(
     acp_zone: str,
     geocoder,
 ) -> tuple[float, float] | None:
-    """Try 3 progressively simpler Nominatim queries. Returns (lat, lng) or None."""
+    """Try 3 progressively simpler queries. Uses Mappls if enabled and configured, otherwise Nominatim."""
+    import src.mappls_api as mappls_api
+    import streamlit as st
+
+    try:
+        mappls_enabled = st.session_state.get("mappls_geocoding_enabled", False)
+    except Exception:
+        mappls_enabled = False
+
+    use_mappls = mappls_enabled and mappls_api.is_configured()
+
     queries = [
         f"{station_name} Police Station, {acp_zone}, Bangalore, Karnataka, India",
         f"{station_name} Police Station, Bangalore, Karnataka, India",
         f"{station_name}, Bangalore, India",
     ]
     for q in queries:
-        loc = geocoder(q)
-        if loc is not None:
-            return (loc.latitude, loc.longitude)
+        if use_mappls:
+            res = mappls_api.geocode_address(q)
+            if res is not None:
+                return res
+        else:
+            loc = geocoder(q)
+            if loc is not None:
+                return (loc.latitude, loc.longitude)
     return None
+
 
 
 def _clean_station_field(raw: str) -> tuple[str, str]:
