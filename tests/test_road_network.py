@@ -52,3 +52,11 @@ def test_corridor_route_coords_returns_road_path(bengaluru_graph):
     coords = corridor_route_coords(bengaluru_graph, df, "CBD 2")
     assert len(coords) > 1
     assert all(len(c) == 2 for c in coords)
+
+
+def test_corridor_route_coords_fallback_when_graph_none():
+    from src.pipeline import load_raw
+    df = load_raw()
+    coords = corridor_route_coords(None, df, "CBD 2")
+    assert len(coords) > 1
+    assert all(len(c) == 2 for c in coords)

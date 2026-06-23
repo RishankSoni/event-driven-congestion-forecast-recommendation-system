@@ -11,29 +11,42 @@ import pandas as pd
 _BBOX = (77.28, 12.78, 77.80, 13.30)
 
 
-def load_graph(cache_path: Path) -> nx.MultiDiGraph:
-    """Load Bengaluru drive graph from GraphML cache; download and cache if absent.
+def load_graph(cache_path: Path) -> nx.MultiDiGraph | None:
+    """Load Bengaluru drive graph from GraphML cache.
 
-    Downloads once (~60 s, internet required). All subsequent loads read from disk (~2 s).
-    The graph is reduced to its largest strongly-connected component so every node
-    is reachable from every other node — nx.shortest_path never raises NetworkXNoPath.
+    If the cache file is missing on disk, this function logs a warning and returns None
+    to prevent downloading a massive 266MB city graph dynamically during deployment.
     """
     if cache_path.exists():
-        return ox.load_graphml(cache_path)
-    G: nx.MultiDiGraph = ox.graph_from_bbox(_BBOX, network_type="drive")
-    sccs = list(nx.strongly_connected_components(G))
-    largest_scc = max(sccs, key=len)
-    G = G.subgraph(largest_scc).copy()
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    ox.save_graphml(G, cache_path)
-    return G
+        try:
+            return ox.load_graphml(cache_path)
+        except Exception as e:
+            logger.warning(f"Failed to load GraphML cache: {e}")
+            return None
+    
+    # Try finding the file in a sibling directory or fallback location
+    alt_paths = [
+        Path("data") / cache_path.name,
+        Path("../data") / cache_path.name
+    ]
+    for alt_path in alt_paths:
+        if alt_path.exists():
+            try:
+                return ox.load_graphml(alt_path)
+            except Exception:
+                pass
+                
+    logger.warning(f"GraphML cache file not found at {cache_path}. Falling back to straight line / coordinate mapping.")
+    return None
 
 
-def nearest_node(G: nx.MultiDiGraph, lat: float, lng: float) -> int:
+def nearest_node(G: nx.MultiDiGraph | None, lat: float, lng: float) -> int:
     """Snap a lat/lng coordinate to the nearest OSM node in G.
 
     OSMnx convention: X=longitude, Y=latitude.
     """
+    if G is None:
+        raise ValueError("Cannot snap to node: road network graph is not loaded.")
     return int(ox.distance.nearest_nodes(G, X=lng, Y=lat))
 
 
@@ -46,8 +59,10 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def route_coords(G: nx.MultiDiGraph, orig_node: int, dest_node: int) -> list:
+def route_coords(G: nx.MultiDiGraph | None, orig_node: int, dest_node: int) -> list:
     """Return road-following (lat, lng) waypoints between two OSM node IDs via Dijkstra."""
+    if G is None:
+        return []
     node_ids = nx.shortest_path(G, orig_node, dest_node, weight="length")
     return [(float(G.nodes[n]["y"]), float(G.nodes[n]["x"])) for n in node_ids]
 
@@ -61,7 +76,7 @@ def _path_length(G: nx.MultiDiGraph, nodes: list) -> float:
 
 
 def compute_diversions(
-    G: nx.MultiDiGraph,
+    G: nx.MultiDiGraph | None,
     df: pd.DataFrame,
     corridor: str,
     n_routes: int = 2,
@@ -81,6 +96,8 @@ def compute_diversions(
     Thread-safety note: edge weights are temporarily modified on the shared cached
     graph and immediately restored. Safe for single-user deployments.
     """
+    if G is None:
+        return []
     try:
         primary_coords = corridor_route_coords(G, df, corridor)
     except (ValueError, nx.NetworkXNoPath, nx.NodeNotFound, Exception):
@@ -140,7 +157,7 @@ def compute_diversions(
     return routes
 
 
-def corridor_route_coords(G: nx.MultiDiGraph, df: pd.DataFrame, corridor: str) -> list:
+def corridor_route_coords(G: nx.MultiDiGraph | None, df: pd.DataFrame, corridor: str) -> list:
     """Return road-following waypoints along the full length of a named corridor.
 
     Finds the two most geographically distant historical events on the corridor,
@@ -166,6 +183,11 @@ def corridor_route_coords(G: nx.MultiDiGraph, df: pd.DataFrame, corridor: str) -
             )
             if d > max_dist:
                 max_dist, i_max, j_max = d, i, j
+
+    if G is None:
+        # Fallback: Sort events by their coordinates to approximate the path
+        sub_sorted = sub.sort_values(by=["latitude", "longitude"])
+        return list(zip(sub_sorted["latitude"].astype(float), sub_sorted["longitude"].astype(float)))
 
     start_node = nearest_node(G, float(sub.loc[i_max, "latitude"]), float(sub.loc[i_max, "longitude"]))
     end_node   = nearest_node(G, float(sub.loc[j_max, "latitude"]), float(sub.loc[j_max, "longitude"]))
