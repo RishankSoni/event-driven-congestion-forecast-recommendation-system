@@ -5,13 +5,11 @@ import pandas as pd
 import streamlit as st
 
 from src import ops_store
+from src.ui import inject_css, page_header, section_header
 
 st.set_page_config(page_title="GRIDLOCK — Multi-Event Optimizer", layout="wide")
-
-st.title("Multi-Event Optimizer")
-st.caption("Plan officer and station assignments for multiple concurrent events.")
-
-st.markdown("---")
+inject_css()
+page_header("Multi-Event Optimizer", subtitle="Plan officer and station assignments for multiple concurrent events.")
 
 # ── Step 1: Date picker ───────────────────────────────────────────────────────
 selected_date = st.date_input("Select event date", value=date.today())
@@ -63,10 +61,8 @@ if st.button("Optimize Resource Allocation", type="primary"):
     with st.spinner("Running multi-event optimization…"):
         result = ops_store.optimize_multi_event(selected_ids)
 
-    st.markdown("---")
-
     # Combined summary
-    st.markdown("### Combined Resource Summary")
+    section_header("Combined Resource Summary")
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Officers (min)", result["total_officers_min"])
     c2.metric("Total Officers (max)", result["total_officers_max"])
@@ -91,10 +87,8 @@ if st.button("Optimize Resource Allocation", type="primary"):
     else:
         st.success("✓ No station conflicts — all events can be staffed independently.")
 
-    st.markdown("---")
-
     # Per-event station assignments
-    st.markdown("### Per-Event Station Assignments")
+    section_header("Per-Event Station Assignments")
     for pe in result["per_event"]:
         ev_data = next((e for e in result["events"] if e["event_id"] == pe["event_id"]), {})
         sev = ev_data.get("severity", "—")
@@ -128,6 +122,5 @@ if st.button("Optimize Resource Allocation", type="primary"):
                 )
                 st.caption(f"⚠ Shared station conflict with: {conflict_names}")
 
-    st.markdown("---")
     st.page_link("pages/8_Command_Dashboard.py", label="← Command Dashboard")
     st.page_link("pages/7_Deployment_Plan.py",   label="View Deployment Plan →")

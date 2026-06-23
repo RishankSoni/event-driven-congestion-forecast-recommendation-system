@@ -5,18 +5,18 @@ import pandas as pd
 import streamlit as st
 
 from src import ops_store, station_store
+from src.ui import inject_css, page_header, section_header
 
 st.set_page_config(page_title="GRIDLOCK — Command Dashboard", layout="wide")
+inject_css()
 
-st.title("Command Dashboard")
-st.caption(f"Today: {date.today().strftime('%A, %d %B %Y')}")
-
-col_refresh, _ = st.columns([1, 8])
+col_title, col_refresh = st.columns([8, 1])
+with col_title:
+    page_header("Command Dashboard", subtitle=date.today().strftime("%A, %d %B %Y"))
 with col_refresh:
+    st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
     if st.button("↻ Refresh"):
         st.rerun()
-
-st.markdown("---")
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 today_events   = ops_store.get_today_events()
@@ -30,10 +30,8 @@ m2.metric("HIGH Severity",       sum(1 for e in today_events if e.get("severity"
 m3.metric("Conflict Pairs",      len(conflict_pairs))
 m4.metric("Geocoded Stations",   geo_summary.get("geocoded", 0))
 
-st.markdown("---")
-
 # ── Row 2: Today's events table ────────────────────────────────────────────────
-st.markdown("### Today's Events")
+section_header("Today's Events")
 
 if not today_events:
     st.info("No events planned for today.")
@@ -67,10 +65,8 @@ else:
                 f"({a.get('corridor', '?')} / {b.get('corridor', '?')})"
             )
 
-st.markdown("---")
-
 # ── Row 3: 7-day pipeline ─────────────────────────────────────────────────────
-st.markdown("### Upcoming 7 Days")
+section_header("Upcoming 7 Days")
 week_events = ops_store.get_week_events(days=7)
 
 if not week_events:
@@ -88,6 +84,5 @@ else:
     ]
     st.dataframe(pd.DataFrame(week_rows), use_container_width=True, hide_index=True)
 
-st.markdown("---")
 st.page_link("pages/9_Multi_Event_Optimizer.py", label="Multi-Event Optimizer →")
 st.page_link("pages/1_Plan_Event.py",            label="Plan New Event →")

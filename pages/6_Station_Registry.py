@@ -6,9 +6,11 @@ import folium
 
 from src import station_store
 from src.app_cache import load_and_train
+from src.ui import inject_css, page_header
 
 st.set_page_config(page_title="Station Registry", layout="wide")
-st.title("Station Registry")
+inject_css()
+page_header("Station Registry", subtitle="Manage police station capacities and geocoding.")
 
 load_and_train()  # ensures init_station_db() has been called
 
@@ -108,7 +110,6 @@ with tab_geocoding:
     c3.metric("Fallback", summary["fallback"])
     c4.metric("Pending",  summary["pending"])
 
-    st.markdown("---")
     if summary["pending"] == 0 and summary["total"] > 0:
         st.success("All stations have coordinates.")
     else:
@@ -137,7 +138,6 @@ with tab_geocoding:
             )
             st.rerun()
 
-    st.markdown("---")
     st.markdown("**Reset individual station** (sets back to pending for re-geocoding):")
     reset_code = st.number_input("Station code", min_value=1, step=1, value=None)
     if st.button("Reset") and reset_code:
