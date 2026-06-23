@@ -14,6 +14,7 @@ from src.pipeline import corridor_metadata
 from src.recommender import barricade_positions, get_diversions, officer_count
 from src.risk_model import predict_risks
 from src.ui import inject_css, page_header, section_header, sidebar_metrics
+from src.weather import get_live_weather
 
 st.set_page_config(page_title="Event Congestion Planner", layout="wide")
 inject_css()
@@ -150,6 +151,7 @@ if submitted:
     else:              hb = "evening"
 
     zone, police, lat, lng = corridor_metadata(train_df, corridor)
+    weather = get_live_weather(lat, lng)
 
     features = {
         "event_cause":           event_cause,
@@ -172,6 +174,8 @@ if submitted:
         "estimated_attendance":  int(estimated_attendance),
         "has_vip":               has_vip,
         "is_route_event":        is_route_event,
+        "rain_mm":               weather["rain_mm"],
+        "temperature_c":         weather["temperature_c"],
     }
 
     severity, confidence = predict(pipeline, features)
@@ -219,6 +223,8 @@ if submitted:
         "estimated_attendance":  int(estimated_attendance),
         "has_vip":               has_vip,
         "is_route_event":        is_route_event,
+        "rain_mm":               weather["rain_mm"],
+        "temperature_c":         weather["temperature_c"],
     }
     st.session_state["save_data"] = {
         "event_name":            event_name,

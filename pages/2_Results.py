@@ -128,6 +128,16 @@ with left:
     _dur = r.get("duration", "N/A")
     st.markdown(f"**Duration Forecast:** {_DUR_LABELS.get(_dur, _dur)}")
 
+    # Weather context
+    rain_mm = r.get("rain_mm", 0.0)
+    temperature_c = r.get("temperature_c", 25.0)
+    st.markdown("")
+    wcol1, wcol2 = st.columns(2)
+    with wcol1:
+        st.metric(label="Temperature", value=f"{temperature_c:.1f} °C")
+    with wcol2:
+        st.metric(label="Rainfall", value=f"{rain_mm:.1f} mm")
+
     # ── Risk Forecast ─────────────────────────────────────────────────────────
     section_header("Risk Forecast")
     cong_prob = risks["congestion_prob"]

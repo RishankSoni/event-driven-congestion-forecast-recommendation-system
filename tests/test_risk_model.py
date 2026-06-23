@@ -43,7 +43,7 @@ def _make_train_df() -> pd.DataFrame:
 
 
 def test_risk_features_length():
-    assert len(_RISK_FEATURES) == 20
+    assert len(_RISK_FEATURES) == 22
 
 
 def test_train_risk_models_returns_required_keys():

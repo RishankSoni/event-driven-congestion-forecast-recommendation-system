@@ -32,10 +32,13 @@ def _make_preprocessor() -> ColumnTransformer:
 def safe_df(df: pd.DataFrame) -> pd.DataFrame:
     """Inject all feature columns with safe defaults when absent."""
     df = df.copy()
-    # Inject all numeric feature columns with 0 as default
+    # Inject all numeric feature columns with safe defaults
     for col in NUM_COLS:
         if col not in df.columns:
-            df[col] = 0
+            if col == "temperature_c":
+                df[col] = 25.0
+            else:
+                df[col] = 0.0
     for col in CAT_COLS:
         if col not in df.columns:
             df[col] = "unknown"

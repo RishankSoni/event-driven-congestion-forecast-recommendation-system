@@ -24,6 +24,8 @@ NUM_COLS = [
     "estimated_attendance",
     "has_vip",
     "is_route_event",
+    "rain_mm",
+    "temperature_c",
 ]
 ALL_FEATURE_COLS = CAT_COLS + NUM_COLS
 TARGET_COL = "severity"
@@ -118,6 +120,10 @@ def _X(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = 0
     if "veh_type" not in df.columns:
         df["veh_type"] = "unknown"
+    if "rain_mm" not in df.columns:
+        df["rain_mm"] = 0.0
+    if "temperature_c" not in df.columns:
+        df["temperature_c"] = 25.0
 
     out: pd.DataFrame = df[ALL_FEATURE_COLS].copy()  # type: ignore[assignment]
     out["requires_road_closure"] = out["requires_road_closure"].astype(int)
@@ -125,6 +131,8 @@ def _X(df: pd.DataFrame) -> pd.DataFrame:
     out["month"] = out["month"].astype(int)
     for col in _NLP_NUM_COLS + _NEW_INT_COLS:
         out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).astype(int)
+    out["rain_mm"] = pd.to_numeric(out["rain_mm"], errors="coerce").fillna(0.0).astype(float)
+    out["temperature_c"] = pd.to_numeric(out["temperature_c"], errors="coerce").fillna(25.0).astype(float)
     for col in CAT_COLS:
         col_s: pd.Series = out[col]  # type: ignore[assignment]
         out[col] = col_s.fillna("unknown").astype(str)
