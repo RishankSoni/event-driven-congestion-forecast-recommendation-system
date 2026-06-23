@@ -70,6 +70,18 @@ def inject_css() -> None:
         font-weight: 600 !important;
     }
 
+    /* ══════════════════════════════════════════════════
+       HIDE WORKFLOW-ONLY PAGES FROM SIDEBAR NAV
+       Results and Post-Event-Report are accessed via
+       st.switch_page only — not via the sidebar.
+    ══════════════════════════════════════════════════ */
+    [data-testid="stSidebarNavLink"][href="/results"],
+    [data-testid="stSidebarNavLink"][href="/post-event-report"],
+    li:has([data-testid="stSidebarNavLink"][href="/results"]),
+    li:has([data-testid="stSidebarNavLink"][href="/post-event-report"]) {
+        display: none !important;
+    }
+
     /* Sidebar metric color cycling */
     [data-testid="stSidebar"] [data-testid="stMetric"]:nth-of-type(1) { border-top-color: #3B82F6 !important; }
     [data-testid="stSidebar"] [data-testid="stMetric"]:nth-of-type(2) { border-top-color: #22C55E !important; }
