@@ -2,8 +2,11 @@
 import pandas as pd
 import streamlit as st
 
+from src.ui import inject_css, page_header, section_header, severity_badge
+
 st.set_page_config(page_title="Deployment Plan", layout="wide")
-st.title("Deployment Plan")
+inject_css()
+page_header("Deployment Plan")
 
 if "deployment_data" not in st.session_state:
     st.warning("No deployment plan found. Please run a prediction first.")
@@ -17,23 +20,22 @@ plan     = dd["plan"]
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 sev = event.get("severity", "—")
-sev_color = {"HIGH": "🔴", "MEDIUM": "🟠", "LOW": "🟢"}.get(sev, "⚫")
-st.markdown(
-    f"**{event.get('event_name', '—')}** &nbsp; {sev_color} {sev} &nbsp;|&nbsp; "
-    f"{event.get('event_date', '')} {event.get('event_time', '')} &nbsp;|&nbsp; "
-    f"{event.get('corridor', '—')}"
-)
-
-st.markdown("---")
+col_ev, col_sev = st.columns([4, 1])
+with col_ev:
+    st.markdown(
+        f"**{event.get('event_name', '—')}** &nbsp;|&nbsp; "
+        f"{event.get('event_date', '')} {event.get('event_time', '')} &nbsp;|&nbsp; "
+        f"{event.get('corridor', '—')}"
+    )
+with col_sev:
+    severity_badge(sev)
 
 # ── Section 1: Briefing ───────────────────────────────────────────────────────
-st.subheader("Operational Briefing")
+section_header("Operational Briefing")
 st.info(plan["briefing"])
 
-st.markdown("---")
-
 # ── Section 2: Station Deployment ─────────────────────────────────────────────
-st.subheader("Station Deployment")
+section_header("Station Deployment")
 
 if stations:
     rows = []
@@ -58,18 +60,14 @@ if stations:
 else:
     st.info("No stations ranked — geocoding not yet run. Visit Station Registry.")
 
-st.markdown("---")
-
 # ── Section 3: Officers ───────────────────────────────────────────────────────
-st.subheader("Officer Strength")
+section_header("Officer Strength")
 o1, o2 = st.columns(2)
 o1.metric("Minimum Officers", plan["total_officers_min"])
 o2.metric("Maximum Officers", plan["total_officers_max"])
 
-st.markdown("---")
-
 # ── Section 4: Barricades & Diversions ────────────────────────────────────────
-st.subheader("Barricades & Diversions")
+section_header("Barricades & Diversions")
 col_b, col_d = st.columns(2)
 with col_b:
     st.markdown("**Barricade positions**")
@@ -86,19 +84,15 @@ with col_d:
     else:
         st.caption("None identified.")
 
-st.markdown("---")
-
 # ── Section 5: Support Requirements ──────────────────────────────────────────
-st.subheader("Support Requirements")
+section_header("Support Requirements")
 m1, m2, m3 = st.columns(3)
 m1.metric("QRT Units",    plan["qrt_units"])
 m2.metric("Medical Posts", plan["medical_posts"])
 m3.metric("VIP Protocol",  "Yes" if plan["vip_protocol"] else "No")
 
-st.markdown("---")
-
 # ── Section 6: Timeline ───────────────────────────────────────────────────────
-st.subheader("Deployment Timeline")
+section_header("Deployment Timeline")
 tl_df = pd.DataFrame([
     {
         "Time (relative)": (
@@ -110,8 +104,6 @@ tl_df = pd.DataFrame([
     for t in plan["timeline"]
 ])
 st.table(tl_df)
-
-st.markdown("---")
 
 # ── Section 7: Export / Print ─────────────────────────────────────────────────
 export_rows = (
