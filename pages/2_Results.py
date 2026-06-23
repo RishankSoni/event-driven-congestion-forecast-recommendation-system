@@ -8,7 +8,7 @@ from streamlit_folium import st_folium
 from src import event_store, station_store
 from src.app_cache import load_and_train
 from src.deployment_planner import build_deployment_plan
-from src.ui import inject_css, page_header, section_header, sidebar_metrics, severity_badge, risk_gauge
+from src.ui import inject_css, page_header, section_header, sidebar_metrics, severity_badge, risk_gauge, ai_insight_card
 
 
 def _build_save_record(sd: dict, r: dict) -> dict:
@@ -96,9 +96,14 @@ left, right = st.columns([1, 2])
 
 def _render_shap_drivers(drivers: list[dict]) -> None:
     for d in drivers:
-        arrow = "▲" if d["direction"] == "+" else "▼"
+        if d["direction"] == "+":
+            arrow_html = '<span style="color:#4ADE80;font-weight:700">▲</span>'
+        else:
+            arrow_html = '<span style="color:#F87171;font-weight:700">▼</span>'
         st.markdown(
-            f"{arrow} **{d['direction']}{d['pct']}%** &nbsp; {d['display']}"
+            f'{arrow_html} <strong style="color:#E2E8F0">{d["direction"]}{d["pct"]}%</strong>'
+            f' &nbsp;<span style="color:#94A3B8">{d["display"]}</span>',
+            unsafe_allow_html=True,
         )
 
 
@@ -182,6 +187,10 @@ with left:
 
     # ── SHAP Explainability ────────────────────────────────────────────────────
     section_header(f"Why {severity}?")
+    ai_insight_card(
+        f"<strong>Top drivers for {severity} severity prediction.</strong> "
+        f"Factors marked ▲ increase severity risk; ▼ decrease it."
+    )
     _render_shap_drivers(r["shap_severity"])
 
     with st.expander(f"Why traffic congestion = {cong_prob*100:.0f}%?"):
