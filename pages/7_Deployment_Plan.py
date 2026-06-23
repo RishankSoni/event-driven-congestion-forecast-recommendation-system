@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 
-from src.ui import inject_css, page_header, section_header, severity_badge
+from src.ui import inject_css, page_header, section_header, severity_badge, ai_insight_card
 
 st.set_page_config(page_title="Deployment Plan", layout="wide")
 inject_css()
@@ -32,7 +32,7 @@ with col_sev:
 
 # ── Section 1: Briefing ───────────────────────────────────────────────────────
 section_header("Operational Briefing")
-st.info(plan["briefing"])
+ai_insight_card(plan["briefing"])
 
 # ── Section 2: Station Deployment ─────────────────────────────────────────────
 section_header("Station Deployment")

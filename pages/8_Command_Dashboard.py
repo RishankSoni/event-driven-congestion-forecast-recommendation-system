@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from src import ops_store, station_store
-from src.ui import inject_css, page_header, section_header
+from src.ui import inject_css, page_header, section_header, kpi_metric
 
 st.set_page_config(page_title="GRIDLOCK — Command Dashboard", layout="wide")
 inject_css()
@@ -25,10 +25,14 @@ geo_summary    = station_store.get_geocode_summary()
 
 # ── Row 1: Summary metrics ─────────────────────────────────────────────────────
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Events Today",        len(today_events))
-m2.metric("HIGH Severity",       sum(1 for e in today_events if e.get("severity") == "HIGH"))
-m3.metric("Conflict Pairs",      len(conflict_pairs))
-m4.metric("Geocoded Stations",   geo_summary.get("geocoded", 0))
+with m1:
+    kpi_metric("Events Today",      len(today_events),                                              "#3B82F6")
+with m2:
+    kpi_metric("HIGH Severity",     sum(1 for e in today_events if e.get("severity") == "HIGH"),   "#EF4444")
+with m3:
+    kpi_metric("Conflict Pairs",    len(conflict_pairs),                                             "#F59E0B")
+with m4:
+    kpi_metric("Geocoded Stations", geo_summary.get("geocoded", 0),                                 "#22C55E")
 
 # ── Row 2: Today's events table ────────────────────────────────────────────────
 section_header("Today's Events")
